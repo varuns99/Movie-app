@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 450">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#332143"/>
+      <stop offset="0.52" stop-color="#15111d"/>
+      <stop offset="1" stop-color="#0f3031"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="450" rx="20" fill="url(#g)"/>
+  <rect x="44" y="72" width="212" height="306" rx="14" fill="none" stroke="#f4c86a" stroke-width="8" opacity=".78"/>
+  <path d="M124 184v82l72-41-72-41Z" fill="#8ddbc8"/>
+  <text x="150" y="336" text-anchor="middle" fill="#f8e8bd" font-family="Arial, sans-serif" font-size="25" font-weight="700">Movie Night</text>
+</svg>
