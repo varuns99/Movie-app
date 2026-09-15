@@ -472,10 +472,7 @@ function App() {
                   score={matchScore(movie, profile)}
                   state={state}
                   onTrailer={() => setTrailerMovie(movie)}
-                  onRate={() => {
-                    updateMovie(movie.id, (current) => ({ ...current, status: "watched", watchedAt: current.watchedAt ?? todayIso() }));
-                    setRatingMovie(movie);
-                  }}
+                  onRate={() => setRatingMovie(movie)}
                   onToggleWatched={() =>
                     updateMovie(movie.id, (current) => ({
                       ...current,
@@ -719,14 +716,24 @@ function RoomModal({
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const keepMovies = form.get("keepMovies") === "on";
+    if (!keepMovies && state.movies.length && !window.confirm("This clears your whole watchlist and history. Continue?")) {
+      return;
+    }
     onSave(
       createRoom(
         String(form.get("roomName") || state.room.name),
         String(form.get("partnerA") || state.room.partnerA),
         String(form.get("partnerB") || state.room.partnerB),
       ),
-      form.get("keepMovies") === "on",
+      keepMovies,
     );
+  };
+
+  const handleReset = () => {
+    if (window.confirm("This restores the demo room and erases your current watchlist and history. Continue?")) {
+      onReset();
+    }
   };
 
   return (
@@ -752,7 +759,7 @@ function RoomModal({
         </label>
         <p className="room-code">Local room code: {state.room.id.slice(0, 8).toUpperCase()}</p>
         <div className="modal-actions">
-          <button type="button" onClick={onReset}>
+          <button type="button" onClick={handleReset}>
             Restore demo
           </button>
           <button className="primary-button" type="submit">
@@ -839,8 +846,24 @@ function TrailerModal({ movie, onClose }: { movie: Movie; onClose: () => void })
 }
 
 function Modal({ title, children, onClose, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={title}>
+    <div
+      className="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div className={wide ? "modal wide" : "modal"}>
         <div className="modal-heading">
           <h2>{title}</h2>
