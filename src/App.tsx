@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
 import { createId, createRoom, loadState, resetState, saveState } from "./storage";
-import { hasTmdbKey, searchTmdb } from "./tmdb";
+import { hasTmdbProxy, searchTmdb } from "./tmdb";
 import type { AppState, Mood, Movie, MovieCandidate, PartnerId, RouletteFilters, TasteProfile } from "./types";
 
 const moodLabels: Record<Mood, string> = {
@@ -139,7 +139,7 @@ function App() {
       setSearchLoading(true);
       setSearchError("");
       try {
-        if (hasTmdbKey) {
+        if (hasTmdbProxy) {
           const tmdbResults = await searchTmdb(trimmed);
           if (active) setSearchResults(tmdbResults);
         } else {
@@ -428,7 +428,7 @@ function App() {
               <p className="eyebrow">Add a maybe</p>
               <h2>Search, then toss it in</h2>
             </div>
-            <span>{hasTmdbKey ? "TMDb connected" : "Demo mode"}</span>
+            <span>{hasTmdbProxy ? "Movie database connected" : "Demo mode"}</span>
           </div>
           <div className="search-row">
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a movie title" />
@@ -438,7 +438,7 @@ function App() {
           {searchError && <div className="error-state">{searchError}</div>}
           {!query && (
             <div className="hint">
-              {hasTmdbKey ? "Live movie search is available." : "No API key found, so demo search uses a curated seed list."}
+              {hasTmdbProxy ? "Live movie search is available." : "No movie database proxy found, so demo search uses a curated seed list."}
             </div>
           )}
           {query && !searchLoading && !searchResults.length && (
@@ -557,6 +557,9 @@ function App() {
           )}
         </section>
       </main>
+      <footer className="credits">
+        This product uses the TMDB API but is not endorsed or certified by TMDB.
+      </footer>
 
       {manualOpen && <ManualMovieModal onClose={() => setManualOpen(false)} onAdd={addMovie} />}
       {roomOpen && (

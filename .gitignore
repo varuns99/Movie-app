@@ -4,3 +4,9 @@ dist/
 .DS_Store
 .env
 .env.local
+
+# Local Claude Code tooling config, not part of the app
+.claude/
+
+# Cloudflare Wrangler local state
+.wrangler/

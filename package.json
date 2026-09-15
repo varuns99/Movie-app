@@ -1,13 +1,15 @@
 {
   "name": "movie-night-roulette",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "tmdb:secret": "cd worker && npx wrangler secret put TMDB_API_KEY",
+    "tmdb:deploy": "cd worker && npx wrangler deploy"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",

@@ -154,6 +154,15 @@ textarea:focus {
   gap: 1rem;
 }
 
+.credits {
+  margin: 1.4rem auto 0;
+  max-width: 58rem;
+  color: rgba(251, 245, 231, 0.55);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
 .room-hero,
 .panel,
 .watchlist {
