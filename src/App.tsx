@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
 import { createId, createRoom, loadState, resetState, saveState } from "./storage";
 import { hasTmdbKey, searchTmdb } from "./tmdb";
@@ -119,6 +119,7 @@ function App() {
   const [rouletteIndex, setRouletteIndex] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [selectedMovieId, setSelectedMovieId] = useState<string | null>(null);
+  const rouletteTileRefs = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
     saveState(state);
@@ -175,8 +176,16 @@ function App() {
     [state.movies, profile],
   );
   const bestTonight = moviesByMatch[0];
-  const eligibleMovies = useMemo(() => filterMovies(state.movies, filters), [state.movies, filters]);
-  const selectedMovie = state.movies.find((movie) => movie.id === selectedMovieId) ?? bestTonight;
+  const rouletteMovies = useMemo(
+    () => filterMovies(state.movies, filters).sort((a, b) => matchScore(b, profile) - matchScore(a, profile)),
+    [state.movies, filters, profile],
+  );
+  const selectedMovie = selectedMovieId ? state.movies.find((movie) => movie.id === selectedMovieId) : undefined;
+  const activeRouletteIndex = useMemo(() => {
+    if (spinning || !selectedMovieId) return rouletteIndex;
+    const selectedIndex = rouletteMovies.findIndex((movie) => movie.id === selectedMovieId);
+    return selectedIndex >= 0 ? selectedIndex : rouletteIndex;
+  }, [rouletteIndex, rouletteMovies, selectedMovieId, spinning]);
   const watchedMovies = useMemo(
     () =>
       state.movies
@@ -184,6 +193,17 @@ function App() {
         .sort((a, b) => new Date(b.watchedAt ?? b.addedAt).getTime() - new Date(a.watchedAt ?? a.addedAt).getTime()),
     [state.movies],
   );
+
+  useEffect(() => {
+    setRouletteIndex((current) => (rouletteMovies.length ? current % rouletteMovies.length : 0));
+    setSelectedMovieId((current) => (current && rouletteMovies.some((movie) => movie.id === current) ? current : null));
+  }, [rouletteMovies]);
+
+  useEffect(() => {
+    const activeMovie = rouletteMovies[activeRouletteIndex];
+    const activeTile = activeMovie ? rouletteTileRefs.current.get(activeMovie.id) : undefined;
+    activeTile?.scrollIntoView({ block: "nearest", inline: "center", behavior: spinning ? "auto" : "smooth" });
+  }, [activeRouletteIndex, rouletteMovies, spinning]);
 
   const updateMovie = (movieId: string, updater: (movie: Movie) => Movie) => {
     setState((current) => ({
@@ -205,19 +225,21 @@ function App() {
   };
 
   const spinRoulette = () => {
-    if (!eligibleMovies.length || spinning) return;
+    if (!rouletteMovies.length || spinning) return;
 
-    const ordered = [...eligibleMovies].sort((a, b) => matchScore(b, profile) - matchScore(a, profile));
-    const weighted = ordered.flatMap((movie, index) => Array(Math.max(1, ordered.length - index)).fill(movie));
+    const weighted = rouletteMovies.flatMap((movie, index) => Array(Math.max(1, rouletteMovies.length - index)).fill(movie));
     const winner = weighted[Math.floor(Math.random() * weighted.length)] as Movie;
-    const totalSteps = 24 + Math.floor(Math.random() * 10);
+    const winnerIndex = rouletteMovies.findIndex((movie) => movie.id === winner.id);
+    const loops = 6 + Math.floor(Math.random() * 3);
+    const totalSteps = loops * rouletteMovies.length + winnerIndex;
 
     setSpinning(true);
     setSelectedMovieId(null);
 
     const tick = (step: number) => {
-      setRouletteIndex(step % ordered.length);
+      setRouletteIndex(step % rouletteMovies.length);
       if (step >= totalSteps) {
+        setRouletteIndex(winnerIndex);
         setSelectedMovieId(winner.id);
         setSpinning(false);
         return;
@@ -291,7 +313,7 @@ function App() {
               <p className="eyebrow">Roulette</p>
               <h2>Let the room choose</h2>
             </div>
-            <span>{eligibleMovies.length} eligible</span>
+            <span>{rouletteMovies.length} eligible</span>
           </div>
 
           <div className="filters">
@@ -303,13 +325,14 @@ function App() {
                 max="190"
                 step="5"
                 value={filters.maxRuntime}
+                disabled={spinning}
                 onChange={(event) => setFilters({ ...filters, maxRuntime: Number(event.target.value) })}
               />
               <strong>{filters.maxRuntime} min</strong>
             </label>
             <label>
               Genre
-              <select value={filters.genre} onChange={(event) => setFilters({ ...filters, genre: event.target.value })}>
+              <select disabled={spinning} value={filters.genre} onChange={(event) => setFilters({ ...filters, genre: event.target.value })}>
                 <option value="any">Any genre</option>
                 {genres.map((genre) => (
                   <option key={genre} value={genre}>
@@ -320,7 +343,11 @@ function App() {
             </label>
             <label>
               Mood
-              <select value={filters.mood} onChange={(event) => setFilters({ ...filters, mood: event.target.value as Mood | "any" })}>
+              <select
+                disabled={spinning}
+                value={filters.mood}
+                onChange={(event) => setFilters({ ...filters, mood: event.target.value as Mood | "any" })}
+              >
                 <option value="any">Any mood</option>
                 {moods.map((mood) => (
                   <option key={mood} value={mood}>
@@ -333,6 +360,7 @@ function App() {
               <input
                 type="checkbox"
                 checked={filters.onlyUnwatched}
+                disabled={spinning}
                 onChange={(event) => setFilters({ ...filters, onlyUnwatched: event.target.checked })}
               />
               Only unwatched
@@ -340,11 +368,21 @@ function App() {
           </div>
 
           <div className="roulette-stage" aria-live="polite">
-            {eligibleMovies.length ? (
+            {rouletteMovies.length ? (
               <>
                 <div className={spinning ? "roulette-strip spinning" : "roulette-strip"}>
-                  {eligibleMovies.slice(0, 8).map((movie, index) => (
-                    <div key={movie.id} className={index === rouletteIndex ? "roulette-tile active" : "roulette-tile"}>
+                  {rouletteMovies.map((movie, index) => (
+                    <div
+                      key={movie.id}
+                      ref={(node) => {
+                        if (node) {
+                          rouletteTileRefs.current.set(movie.id, node);
+                        } else {
+                          rouletteTileRefs.current.delete(movie.id);
+                        }
+                      }}
+                      className={index === activeRouletteIndex ? "roulette-tile active" : "roulette-tile"}
+                    >
                       <img src={movie.posterUrl} alt="" />
                       <span>{movie.title}</span>
                     </div>
