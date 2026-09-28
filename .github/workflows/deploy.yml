@@ -38,7 +38,7 @@ jobs:
       - name: Build
         run: pnpm build
         env:
-          VITE_TMDB_PROXY_URL: ${{ vars.VITE_TMDB_PROXY_URL }}
+          VITE_MOVIE_PROXY_URL: ${{ vars.VITE_MOVIE_PROXY_URL }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

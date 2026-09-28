@@ -1,5 +1,5 @@
-name = "movie-night-roulette-tmdb"
-main = "tmdb-proxy.js"
+name = "movie-night-roulette-search"
+main = "tvdb-proxy.js"
 compatibility_date = "2025-01-01"
 
 [vars]

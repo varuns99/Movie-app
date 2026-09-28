@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
 import { createId, createRoom, loadState, resetState, saveState } from "./storage";
-import { hasTmdbProxy, searchTmdb } from "./tmdb";
+import { hasMovieProxy, searchMovies } from "./movieSearch";
 import type { AppState, Mood, Movie, MovieCandidate, PartnerId, RouletteFilters, TasteProfile } from "./types";
 
 const moodLabels: Record<Mood, string> = {
@@ -139,9 +139,9 @@ function App() {
       setSearchLoading(true);
       setSearchError("");
       try {
-        if (hasTmdbProxy) {
-          const tmdbResults = await searchTmdb(trimmed);
-          if (active) setSearchResults(tmdbResults);
+        if (hasMovieProxy) {
+          const proxyResults = await searchMovies(trimmed);
+          if (active) setSearchResults(proxyResults);
         } else {
           const demoResults = demoCandidates.filter((movie) => movie.title.toLowerCase().includes(trimmed.toLowerCase()));
           if (active) setSearchResults(demoResults);
@@ -428,7 +428,7 @@ function App() {
               <p className="eyebrow">Add a maybe</p>
               <h2>Search, then toss it in</h2>
             </div>
-            <span>{hasTmdbProxy ? "Movie database connected" : "Demo mode"}</span>
+            <span>{hasMovieProxy ? "Movie database connected" : "Demo mode"}</span>
           </div>
           <div className="search-row">
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a movie title" />
@@ -438,7 +438,7 @@ function App() {
           {searchError && <div className="error-state">{searchError}</div>}
           {!query && (
             <div className="hint">
-              {hasTmdbProxy ? "Live movie search is available." : "No movie database proxy found, so demo search uses a curated seed list."}
+              {hasMovieProxy ? "Live movie search is available." : "No movie database proxy found, so demo search uses a curated seed list."}
             </div>
           )}
           {query && !searchLoading && !searchResults.length && (
@@ -448,7 +448,7 @@ function App() {
             {searchResults.map((movie) => {
               const alreadyAdded = state.movies.some((item) => item.title.toLowerCase() === movie.title.toLowerCase());
               return (
-                <article key={`${movie.source}-${movie.tmdbId ?? movie.title}`} className="candidate">
+                <article key={`${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
                   <img src={movie.posterUrl} alt="" />
                   <div>
                     <h3>{movie.title}</h3>
@@ -558,7 +558,11 @@ function App() {
         </section>
       </main>
       <footer className="credits">
-        This product uses the TMDB API but is not endorsed or certified by TMDB.
+        Movie data from{" "}
+        <a href="https://thetvdb.com" target="_blank" rel="noreferrer">
+          TheTVDB.com
+        </a>
+        . This product is not endorsed or certified by TheTVDB.
       </footer>
 
       {manualOpen && <ManualMovieModal onClose={() => setManualOpen(false)} onAdd={addMovie} />}

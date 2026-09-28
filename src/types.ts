@@ -19,8 +19,8 @@ export type Rating = {
 
 export type Movie = {
   id: string;
-  source: "demo" | "tmdb" | "manual";
-  tmdbId?: number;
+  source: "demo" | "tvdb" | "manual";
+  tvdbId?: number;
   title: string;
   year: string;
   runtime: number;
@@ -50,8 +50,8 @@ export type AppState = {
 };
 
 export type MovieCandidate = {
-  source: "demo" | "tmdb" | "manual";
-  tmdbId?: number;
+  source: "demo" | "tvdb" | "manual";
+  tvdbId?: number;
   title: string;
   year: string;
   runtime: number;
