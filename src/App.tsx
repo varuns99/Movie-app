@@ -99,6 +99,64 @@ const filterMovies = (movies: Movie[], filters: RouletteFilters) =>
     return true;
   });
 
+type WatchStatusFilter = "any" | "watched" | "unwatched";
+type WatchlistSort =
+  | "added-desc"
+  | "added-asc"
+  | "title-asc"
+  | "match-desc"
+  | "runtime-asc"
+  | "runtime-desc"
+  | "year-desc"
+  | "year-asc";
+
+const watchlistSortOptions: WatchlistSort[] = [
+  "added-desc",
+  "added-asc",
+  "title-asc",
+  "match-desc",
+  "runtime-asc",
+  "runtime-desc",
+  "year-desc",
+  "year-asc",
+];
+
+const sortLabels: Record<WatchlistSort, string> = {
+  "added-desc": "Date added (newest)",
+  "added-asc": "Date added (oldest)",
+  "title-asc": "Title (A–Z)",
+  "match-desc": "Match %",
+  "runtime-asc": "Runtime (shortest)",
+  "runtime-desc": "Runtime (longest)",
+  "year-desc": "Year (newest)",
+  "year-asc": "Year (oldest)",
+};
+
+const sortWatchlist = (movies: Movie[], sort: WatchlistSort, profile: TasteProfile) => {
+  const sorted = [...movies];
+  switch (sort) {
+    case "added-asc":
+      return sorted.sort((a, b) => new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime());
+    case "title-asc":
+      return sorted.sort((a, b) => a.title.localeCompare(b.title));
+    case "match-desc":
+      return sorted.sort((a, b) => matchScore(b, profile) - matchScore(a, profile));
+    case "runtime-asc":
+      return sorted.sort((a, b) => a.runtime - b.runtime);
+    case "runtime-desc":
+      return sorted.sort((a, b) => b.runtime - a.runtime);
+    case "year-desc":
+      return sorted.sort((a, b) => Number(b.year) - Number(a.year));
+    case "year-asc":
+      return sorted.sort((a, b) => Number(a.year) - Number(b.year));
+    case "added-desc":
+    default:
+      return sorted.sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
+  }
+};
+
+const DEFAULT_WATCHLIST_MAX_RUNTIME = 300;
+
 type View = "tonight" | "watchlist" | "history";
 const views: View[] = ["tonight", "watchlist", "history"];
 const viewLabels: Record<View, string> = { tonight: "Tonight", watchlist: "Watchlist", history: "History" };
@@ -130,6 +188,11 @@ function App() {
   const [spinning, setSpinning] = useState(false);
   const [selectedMovieId, setSelectedMovieId] = useState<string | null>(null);
   const rouletteTileRefs = useRef(new Map<string, HTMLDivElement>());
+  const [watchlistGenre, setWatchlistGenre] = useState("any");
+  const [watchlistYear, setWatchlistYear] = useState("any");
+  const [watchlistStatus, setWatchlistStatus] = useState<WatchStatusFilter>("any");
+  const [watchlistMaxRuntime, setWatchlistMaxRuntime] = useState(DEFAULT_WATCHLIST_MAX_RUNTIME);
+  const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>("added-desc");
 
   useEffect(() => {
     saveState(state);
@@ -189,7 +252,35 @@ function App() {
     () => [...new Set(state.movies.flatMap((movie) => movie.genres))].sort((a, b) => a.localeCompare(b)),
     [state.movies],
   );
+  const years = useMemo(
+    () =>
+      [...new Set(state.movies.map((movie) => movie.year).filter((year) => /^\d{4}$/.test(year)))].sort(
+        (a, b) => Number(b) - Number(a),
+      ),
+    [state.movies],
+  );
   const profile = useMemo(() => calculateTasteProfile(state.movies), [state.movies]);
+  const watchlistFiltersActive =
+    watchlistGenre !== "any" ||
+    watchlistYear !== "any" ||
+    watchlistStatus !== "any" ||
+    watchlistMaxRuntime !== DEFAULT_WATCHLIST_MAX_RUNTIME;
+  const filteredWatchlist = useMemo(() => {
+    const filtered = state.movies.filter((movie) => {
+      if (watchlistGenre !== "any" && !movie.genres.includes(watchlistGenre)) return false;
+      if (watchlistYear !== "any" && movie.year !== watchlistYear) return false;
+      if (watchlistStatus !== "any" && movie.status !== watchlistStatus) return false;
+      if (movie.runtime > watchlistMaxRuntime) return false;
+      return true;
+    });
+    return sortWatchlist(filtered, watchlistSort, profile);
+  }, [state.movies, watchlistGenre, watchlistYear, watchlistStatus, watchlistMaxRuntime, watchlistSort, profile]);
+  const resetWatchlistFilters = () => {
+    setWatchlistGenre("any");
+    setWatchlistYear("any");
+    setWatchlistStatus("any");
+    setWatchlistMaxRuntime(DEFAULT_WATCHLIST_MAX_RUNTIME);
+  };
   const moviesByMatch = useMemo(
     () =>
       state.movies
@@ -247,6 +338,15 @@ function App() {
     setSearchResults([]);
   };
 
+  const removeMovie = (movieId: string) => {
+    const movie = state.movies.find((item) => item.id === movieId);
+    if (!movie) return;
+    if (!window.confirm(`Remove "${movie.title}" from the watchlist? This also deletes its ratings and history.`)) {
+      return;
+    }
+    setState((current) => ({ ...current, movies: current.movies.filter((item) => item.id !== movieId) }));
+  };
+
   const spinRoulette = () => {
     if (!rouletteMovies.length || spinning) return;
 
@@ -296,72 +396,19 @@ function App() {
       <main className="view" aria-label={`${viewLabels[view]} view`}>
         {view === "tonight" && (
           <>
-            <section className="search-shell" aria-label="Add a movie">
-              <div className="search-field">
-                <svg className="search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.6" />
-                  <line x1="13.6" y1="13.6" x2="17.5" y2="17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a movie to add" />
-                {query && (
-                  <button type="button" className="clear-search" aria-label="Clear search" onClick={() => setQuery("")}>
-                    ×
-                  </button>
-                )}
-              </div>
-              <div className="search-meta">
-                <span className="search-meta-label">Adding as</span>
-                <div className="partner-switch compact" aria-label="Active partner">
-                  {(["partnerA", "partnerB"] as PartnerId[]).map((partner) => (
-                    <button
-                      key={partner}
-                      className={activePartner === partner ? "active" : ""}
-                      onClick={() => setActivePartner(partner)}
-                    >
-                      {partnerName(state, partner)}
-                    </button>
-                  ))}
-                </div>
-                <button type="button" className="link-button" onClick={() => setManualOpen(true)}>
-                  + Add manually
-                </button>
-                <span className="proxy-status">{hasMovieProxy ? "Live search" : "Demo search"}</span>
-              </div>
-
-              {query && (
-                <div className="search-dropdown">
-                  {searchLoading && <p className="dropdown-state">Checking the shelves...</p>}
-                  {searchError && <p className="dropdown-state error">{searchError}</p>}
-                  {!searchLoading && !searchResults.length && (
-                    <p className="dropdown-state">
-                      Nothing surfaced.{" "}
-                      <button type="button" className="link-button" onClick={() => setManualOpen(true)}>
-                        Add it manually
-                      </button>
-                      .
-                    </p>
-                  )}
-                  {searchResults.map((movie) => {
-                    const alreadyAdded = state.movies.some((item) => item.title.toLowerCase() === movie.title.toLowerCase());
-                    return (
-                      <article key={`${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
-                        <img src={movie.posterUrl} alt="" />
-                        <div>
-                          <h3>{movie.title}</h3>
-                          <p>
-                            {movie.year} • {movie.runtime} min
-                          </p>
-                          <small>{movie.genres.join(" / ")}</small>
-                        </div>
-                        <button disabled={alreadyAdded} onClick={() => addMovie(movie)}>
-                          {alreadyAdded ? "Added" : "Add"}
-                        </button>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+            <AddMovieBar
+              room={state.room}
+              movies={state.movies}
+              query={query}
+              setQuery={setQuery}
+              searchLoading={searchLoading}
+              searchError={searchError}
+              searchResults={searchResults}
+              activePartner={activePartner}
+              setActivePartner={setActivePartner}
+              onManual={() => setManualOpen(true)}
+              onAdd={addMovie}
+            />
 
             <div className="tonight-grid">
               <div className="tonight-main">
@@ -509,6 +556,20 @@ function App() {
 
         {view === "watchlist" && (
           <>
+            <AddMovieBar
+              room={state.room}
+              movies={state.movies}
+              query={query}
+              setQuery={setQuery}
+              searchLoading={searchLoading}
+              searchError={searchError}
+              searchResults={searchResults}
+              activePartner={activePartner}
+              setActivePartner={setActivePartner}
+              onManual={() => setManualOpen(true)}
+              onAdd={addMovie}
+            />
+
             <section className="taste-strip">
               {profile.watchedCount ? (
                 <>
@@ -527,31 +588,110 @@ function App() {
               )}
             </section>
 
+            <section className="panel filters-panel">
+              <div className="section-heading">
+                <p className="eyebrow">Filter &amp; sort</p>
+                {watchlistFiltersActive && (
+                  <button type="button" className="link-button" onClick={resetWatchlistFilters}>
+                    Reset filters
+                  </button>
+                )}
+              </div>
+              <div className="filters">
+                <label>
+                  Genre
+                  <select value={watchlistGenre} onChange={(event) => setWatchlistGenre(event.target.value)}>
+                    <option value="any">Any genre</option>
+                    {genres.map((genre) => (
+                      <option key={genre} value={genre}>
+                        {genre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Year
+                  <select value={watchlistYear} onChange={(event) => setWatchlistYear(event.target.value)}>
+                    <option value="any">Any year</option>
+                    {years.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Status
+                  <select
+                    value={watchlistStatus}
+                    onChange={(event) => setWatchlistStatus(event.target.value as WatchStatusFilter)}
+                  >
+                    <option value="any">Any status</option>
+                    <option value="unwatched">Unwatched</option>
+                    <option value="watched">Watched</option>
+                  </select>
+                </label>
+                <label>
+                  Max runtime
+                  <input
+                    type="range"
+                    min="10"
+                    max={DEFAULT_WATCHLIST_MAX_RUNTIME}
+                    step="5"
+                    value={watchlistMaxRuntime}
+                    onChange={(event) => setWatchlistMaxRuntime(Number(event.target.value))}
+                  />
+                  <strong>
+                    {watchlistMaxRuntime >= DEFAULT_WATCHLIST_MAX_RUNTIME ? "Any" : `${watchlistMaxRuntime} min`}
+                  </strong>
+                </label>
+                <label>
+                  Sort by
+                  <select value={watchlistSort} onChange={(event) => setWatchlistSort(event.target.value as WatchlistSort)}>
+                    {watchlistSortOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {sortLabels[option]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </section>
+
             <section className="watchlist">
               <div className="section-heading">
                 <h2>Watchlist</h2>
-                <span>{state.movies.length} movies</span>
+                <span>
+                  {watchlistFiltersActive
+                    ? `${filteredWatchlist.length} of ${state.movies.length} movies`
+                    : `${state.movies.length} movies`}
+                </span>
               </div>
               {state.movies.length ? (
-                <div className="movie-grid">
-                  {state.movies.map((movie) => (
-                    <MovieCard
-                      key={movie.id}
-                      movie={movie}
-                      score={matchScore(movie, profile)}
-                      state={state}
-                      onTrailer={() => setTrailerMovie(movie)}
-                      onRate={() => setRatingMovie(movie)}
-                      onToggleWatched={() =>
-                        updateMovie(movie.id, (current) => ({
-                          ...current,
-                          status: current.status === "watched" ? "unwatched" : "watched",
-                          watchedAt: current.status === "watched" ? undefined : todayIso(),
-                        }))
-                      }
-                    />
-                  ))}
-                </div>
+                filteredWatchlist.length ? (
+                  <div className="movie-grid">
+                    {filteredWatchlist.map((movie) => (
+                      <MovieCard
+                        key={movie.id}
+                        movie={movie}
+                        score={matchScore(movie, profile)}
+                        state={state}
+                        onTrailer={() => setTrailerMovie(movie)}
+                        onRate={() => setRatingMovie(movie)}
+                        onRemove={() => removeMovie(movie.id)}
+                        onToggleWatched={() =>
+                          updateMovie(movie.id, (current) => ({
+                            ...current,
+                            status: current.status === "watched" ? "unwatched" : "watched",
+                            watchedAt: current.status === "watched" ? undefined : todayIso(),
+                          }))
+                        }
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState title="No matches" body="Try loosening a filter to see more of your watchlist." />
+                )
               ) : (
                 <EmptyState title="No maybes yet" body="Start with one comfort pick and one wild card. That is usually enough to get moving." />
               )}
@@ -635,16 +775,110 @@ function App() {
   );
 }
 
+type AddMovieBarProps = {
+  room: AppState["room"];
+  movies: Movie[];
+  query: string;
+  setQuery: (value: string) => void;
+  searchLoading: boolean;
+  searchError: string;
+  searchResults: MovieCandidate[];
+  activePartner: PartnerId;
+  setActivePartner: (partner: PartnerId) => void;
+  onManual: () => void;
+  onAdd: (candidate: MovieCandidate) => void;
+};
+
+function AddMovieBar({
+  room,
+  movies,
+  query,
+  setQuery,
+  searchLoading,
+  searchError,
+  searchResults,
+  activePartner,
+  setActivePartner,
+  onManual,
+  onAdd,
+}: AddMovieBarProps) {
+  return (
+    <section className="search-shell" aria-label="Add a movie">
+      <div className="search-field">
+        <svg className="search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.6" />
+          <line x1="13.6" y1="13.6" x2="17.5" y2="17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a movie to add" />
+        {query && (
+          <button type="button" className="clear-search" aria-label="Clear search" onClick={() => setQuery("")}>
+            ×
+          </button>
+        )}
+      </div>
+      <div className="search-meta">
+        <span className="search-meta-label">Adding as</span>
+        <div className="partner-switch compact" aria-label="Active partner">
+          {(["partnerA", "partnerB"] as PartnerId[]).map((partner) => (
+            <button key={partner} className={activePartner === partner ? "active" : ""} onClick={() => setActivePartner(partner)}>
+              {room[partner]}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="link-button" onClick={onManual}>
+          + Add manually
+        </button>
+        <span className="proxy-status">{hasMovieProxy ? "Live search" : "Demo search"}</span>
+      </div>
+
+      {query && (
+        <div className="search-dropdown">
+          {searchLoading && <p className="dropdown-state">Checking the shelves...</p>}
+          {searchError && <p className="dropdown-state error">{searchError}</p>}
+          {!searchLoading && !searchResults.length && (
+            <p className="dropdown-state">
+              Nothing surfaced.{" "}
+              <button type="button" className="link-button" onClick={onManual}>
+                Add it manually
+              </button>
+              .
+            </p>
+          )}
+          {searchResults.map((movie) => {
+            const alreadyAdded = movies.some((item) => item.title.toLowerCase() === movie.title.toLowerCase());
+            return (
+              <article key={`${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
+                <img src={movie.posterUrl} alt="" />
+                <div>
+                  <h3>{movie.title}</h3>
+                  <p>
+                    {movie.year} • {movie.runtime} min
+                  </p>
+                  <small>{movie.genres.join(" / ")}</small>
+                </div>
+                <button disabled={alreadyAdded} onClick={() => onAdd(movie)}>
+                  {alreadyAdded ? "Added" : "Add"}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 type MovieCardProps = {
   movie: Movie;
   score: number;
   state: AppState;
   onTrailer: () => void;
   onRate: () => void;
+  onRemove: () => void;
   onToggleWatched: () => void;
 };
 
-function MovieCard({ movie, score, state, onTrailer, onRate, onToggleWatched }: MovieCardProps) {
+function MovieCard({ movie, score, state, onTrailer, onRate, onRemove, onToggleWatched }: MovieCardProps) {
   const avg = averageRating(movie);
   return (
     <article className="movie-card">
@@ -686,6 +920,9 @@ function MovieCard({ movie, score, state, onTrailer, onRate, onToggleWatched }: 
             Trailer
           </button>
           <button onClick={onRate}>Rate</button>
+          <button className="remove-button" onClick={onRemove}>
+            Remove
+          </button>
         </div>
       </div>
     </article>
