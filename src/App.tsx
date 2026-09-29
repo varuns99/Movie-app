@@ -99,8 +99,18 @@ const filterMovies = (movies: Movie[], filters: RouletteFilters) =>
     return true;
   });
 
+type View = "tonight" | "watchlist" | "history";
+const views: View[] = ["tonight", "watchlist", "history"];
+const viewLabels: Record<View, string> = { tonight: "Tonight", watchlist: "Watchlist", history: "History" };
+
+const viewFromHash = (): View => {
+  const hash = window.location.hash.replace("#", "");
+  return (views as string[]).includes(hash) ? (hash as View) : "tonight";
+};
+
 function App() {
   const [state, setState] = useState<AppState>(() => loadState());
+  const [view, setView] = useState<View>(() => viewFromHash());
   const [activePartner, setActivePartner] = useState<PartnerId>("partnerA");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MovieCandidate[]>([]);
@@ -124,6 +134,18 @@ function App() {
   useEffect(() => {
     saveState(state);
   }, [state]);
+
+  useEffect(() => {
+    if (window.location.hash.replace("#", "") !== view) {
+      window.location.hash = view;
+    }
+  }, [view]);
+
+  useEffect(() => {
+    const onHashChange = () => setView(viewFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -193,6 +215,7 @@ function App() {
         .sort((a, b) => new Date(b.watchedAt ?? b.addedAt).getTime() - new Date(a.watchedAt ?? a.addedAt).getTime()),
     [state.movies],
   );
+  const unwatchedCount = state.movies.length - watchedMovies.length;
 
   useEffect(() => {
     setRouletteIndex((current) => (rouletteMovies.length ? current % rouletteMovies.length : 0));
@@ -255,307 +278,316 @@ function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Movie Night Roulette</p>
-          <h1>No more 45 minutes of scrolling.</h1>
+          <h1>{state.room.name}</h1>
         </div>
         <button className="ghost-button" onClick={() => setRoomOpen(true)}>
           Room
         </button>
       </header>
 
-      <main className="dashboard">
-        <section className="room-hero" aria-label="Movie night dashboard">
-          <div className="room-card">
-            <div>
-              <span className="pill">Shared room</span>
-              <h2>{state.room.name}</h2>
-              <p>
-                {state.room.partnerA} and {state.room.partnerB} have {state.movies.filter((movie) => movie.status === "unwatched").length} maybes,
-                {" "}
-                {watchedMovies.length} watched, and one couch-sized decision to make.
-              </p>
-            </div>
-            <div className="partner-switch" aria-label="Active partner">
-              {(["partnerA", "partnerB"] as PartnerId[]).map((partner) => (
-                <button
-                  key={partner}
-                  className={activePartner === partner ? "active" : ""}
-                  onClick={() => setActivePartner(partner)}
-                >
-                  {partnerName(state, partner)}
-                </button>
-              ))}
-            </div>
-          </div>
+      <nav className="view-tabs" aria-label="Sections">
+        {views.map((item) => (
+          <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>
+            {viewLabels[item]}
+          </button>
+        ))}
+      </nav>
 
-          {bestTonight ? (
-            <article className="best-card">
-              <img src={bestTonight.posterUrl} alt="" />
-              <div>
-                <span className="score">{matchScore(bestTonight, profile)}% match</span>
-                <h2>Best for us tonight</h2>
-                <h3>{bestTonight.title}</h3>
-                <p>
-                  {bestTonight.runtime} min • {bestTonight.genres.slice(0, 2).join(" / ")}
-                </p>
-                <button className="primary-button" onClick={spinRoulette}>
-                  Spin with this vibe
-                </button>
+      <main className="view" aria-label={`${viewLabels[view]} view`}>
+        {view === "tonight" && (
+          <>
+            <section className="search-shell" aria-label="Add a movie">
+              <div className="search-field">
+                <svg className="search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.6" />
+                  <line x1="13.6" y1="13.6" x2="17.5" y2="17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a movie to add" />
+                {query && (
+                  <button type="button" className="clear-search" aria-label="Clear search" onClick={() => setQuery("")}>
+                    ×
+                  </button>
+                )}
               </div>
-            </article>
-          ) : (
-            <EmptyState title="The list is waiting" body="Add a few movies and the app will start learning what works for both of you." />
-          )}
-        </section>
-
-        <section className="panel roulette-panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Roulette</p>
-              <h2>Let the room choose</h2>
-            </div>
-            <span>{rouletteMovies.length} eligible</span>
-          </div>
-
-          <div className="filters">
-            <label>
-              Max runtime
-              <input
-                type="range"
-                min="80"
-                max="190"
-                step="5"
-                value={filters.maxRuntime}
-                disabled={spinning}
-                onChange={(event) => setFilters({ ...filters, maxRuntime: Number(event.target.value) })}
-              />
-              <strong>{filters.maxRuntime} min</strong>
-            </label>
-            <label>
-              Genre
-              <select disabled={spinning} value={filters.genre} onChange={(event) => setFilters({ ...filters, genre: event.target.value })}>
-                <option value="any">Any genre</option>
-                {genres.map((genre) => (
-                  <option key={genre} value={genre}>
-                    {genre}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Mood
-              <select
-                disabled={spinning}
-                value={filters.mood}
-                onChange={(event) => setFilters({ ...filters, mood: event.target.value as Mood | "any" })}
-              >
-                <option value="any">Any mood</option>
-                {moods.map((mood) => (
-                  <option key={mood} value={mood}>
-                    {moodLabels[mood]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="toggle-row">
-              <input
-                type="checkbox"
-                checked={filters.onlyUnwatched}
-                disabled={spinning}
-                onChange={(event) => setFilters({ ...filters, onlyUnwatched: event.target.checked })}
-              />
-              Only unwatched
-            </label>
-          </div>
-
-          <div className="roulette-stage" aria-live="polite">
-            {rouletteMovies.length ? (
-              <>
-                <div className={spinning ? "roulette-strip spinning" : "roulette-strip"}>
-                  {rouletteMovies.map((movie, index) => (
-                    <div
-                      key={movie.id}
-                      ref={(node) => {
-                        if (node) {
-                          rouletteTileRefs.current.set(movie.id, node);
-                        } else {
-                          rouletteTileRefs.current.delete(movie.id);
-                        }
-                      }}
-                      className={index === activeRouletteIndex ? "roulette-tile active" : "roulette-tile"}
+              <div className="search-meta">
+                <span className="search-meta-label">Adding as</span>
+                <div className="partner-switch compact" aria-label="Active partner">
+                  {(["partnerA", "partnerB"] as PartnerId[]).map((partner) => (
+                    <button
+                      key={partner}
+                      className={activePartner === partner ? "active" : ""}
+                      onClick={() => setActivePartner(partner)}
                     >
-                      <img src={movie.posterUrl} alt="" />
-                      <span>{movie.title}</span>
-                    </div>
+                      {partnerName(state, partner)}
+                    </button>
                   ))}
                 </div>
-                <button className="spin-button" disabled={spinning} onClick={spinRoulette}>
-                  {spinning ? "Choosing..." : "Spin roulette"}
+                <button type="button" className="link-button" onClick={() => setManualOpen(true)}>
+                  + Add manually
                 </button>
-              </>
+                <span className="proxy-status">{hasMovieProxy ? "Live search" : "Demo search"}</span>
+              </div>
+
+              {query && (
+                <div className="search-dropdown">
+                  {searchLoading && <p className="dropdown-state">Checking the shelves...</p>}
+                  {searchError && <p className="dropdown-state error">{searchError}</p>}
+                  {!searchLoading && !searchResults.length && (
+                    <p className="dropdown-state">
+                      Nothing surfaced.{" "}
+                      <button type="button" className="link-button" onClick={() => setManualOpen(true)}>
+                        Add it manually
+                      </button>
+                      .
+                    </p>
+                  )}
+                  {searchResults.map((movie) => {
+                    const alreadyAdded = state.movies.some((item) => item.title.toLowerCase() === movie.title.toLowerCase());
+                    return (
+                      <article key={`${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
+                        <img src={movie.posterUrl} alt="" />
+                        <div>
+                          <h3>{movie.title}</h3>
+                          <p>
+                            {movie.year} • {movie.runtime} min
+                          </p>
+                          <small>{movie.genres.join(" / ")}</small>
+                        </div>
+                        <button disabled={alreadyAdded} onClick={() => addMovie(movie)}>
+                          {alreadyAdded ? "Added" : "Add"}
+                        </button>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <div className="tonight-grid">
+              <div className="tonight-main">
+                <p className="room-status">
+                  {unwatchedCount} maybes · {watchedMovies.length} watched
+                </p>
+
+                {bestTonight ? (
+                  <article className="best-card">
+                    <img src={bestTonight.posterUrl} alt="" />
+                    <div>
+                      <span className="score">{matchScore(bestTonight, profile)}% match</span>
+                      <h2>Best for us tonight</h2>
+                      <h3>{bestTonight.title}</h3>
+                      <p>
+                        {bestTonight.runtime} min • {bestTonight.genres.slice(0, 2).join(" / ")}
+                      </p>
+                      <button className="primary-button" onClick={spinRoulette}>
+                        Spin with this vibe
+                      </button>
+                    </div>
+                  </article>
+                ) : (
+                  <EmptyState title="The list is waiting" body="Add a few movies and the app will start learning what works for both of you." />
+                )}
+              </div>
+
+              <section className="panel roulette-panel">
+                <div className="section-heading">
+                  <div>
+                    <p className="eyebrow">Roulette</p>
+                    <h2>Let the room choose</h2>
+                  </div>
+                  <span>{rouletteMovies.length} eligible</span>
+                </div>
+
+                <div className="filters">
+                  <label>
+                    Max runtime
+                    <input
+                      type="range"
+                      min="80"
+                      max="190"
+                      step="5"
+                      value={filters.maxRuntime}
+                      disabled={spinning}
+                      onChange={(event) => setFilters({ ...filters, maxRuntime: Number(event.target.value) })}
+                    />
+                    <strong>{filters.maxRuntime} min</strong>
+                  </label>
+                  <label>
+                    Genre
+                    <select disabled={spinning} value={filters.genre} onChange={(event) => setFilters({ ...filters, genre: event.target.value })}>
+                      <option value="any">Any genre</option>
+                      {genres.map((genre) => (
+                        <option key={genre} value={genre}>
+                          {genre}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Mood
+                    <select
+                      disabled={spinning}
+                      value={filters.mood}
+                      onChange={(event) => setFilters({ ...filters, mood: event.target.value as Mood | "any" })}
+                    >
+                      <option value="any">Any mood</option>
+                      {moods.map((mood) => (
+                        <option key={mood} value={mood}>
+                          {moodLabels[mood]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={filters.onlyUnwatched}
+                      disabled={spinning}
+                      onChange={(event) => setFilters({ ...filters, onlyUnwatched: event.target.checked })}
+                    />
+                    Only unwatched
+                  </label>
+                </div>
+
+                <div className="roulette-stage" aria-live="polite">
+                  {rouletteMovies.length ? (
+                    <>
+                      <div className={spinning ? "roulette-strip spinning" : "roulette-strip"}>
+                        {rouletteMovies.map((movie, index) => (
+                          <div
+                            key={movie.id}
+                            ref={(node) => {
+                              if (node) {
+                                rouletteTileRefs.current.set(movie.id, node);
+                              } else {
+                                rouletteTileRefs.current.delete(movie.id);
+                              }
+                            }}
+                            className={index === activeRouletteIndex ? "roulette-tile active" : "roulette-tile"}
+                          >
+                            <img src={movie.posterUrl} alt="" />
+                            <span>{movie.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <button className="spin-button" disabled={spinning} onClick={spinRoulette}>
+                        {spinning ? "Choosing..." : "Spin roulette"}
+                      </button>
+                    </>
+                  ) : (
+                    <EmptyState title="No movies match" body="Loosen a filter and the roulette wheel will behave itself again." />
+                  )}
+                </div>
+
+                {selectedMovie && (
+                  <div className="winner">
+                    <span className="pill">Tonight's pick</span>
+                    <div>
+                      <h3>{selectedMovie.title}</h3>
+                      <p>{selectedMovie.synopsis}</p>
+                    </div>
+                    <div className="winner-actions">
+                      {selectedMovie.trailerUrl && <button onClick={() => setTrailerMovie(selectedMovie)}>Trailer</button>}
+                      <button
+                        onClick={() =>
+                          updateMovie(selectedMovie.id, (movie) => ({
+                            ...movie,
+                            status: "watched",
+                            watchedAt: movie.watchedAt ?? todayIso(),
+                          }))
+                        }
+                      >
+                        Mark watched
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+          </>
+        )}
+
+        {view === "watchlist" && (
+          <>
+            <section className="taste-strip">
+              {profile.watchedCount ? (
+                <>
+                  <span>
+                    <strong>Favorite genres</strong> {profile.favoriteGenres.join(", ")}
+                  </span>
+                  <span>
+                    <strong>Preferred runtime</strong> {profile.preferredRuntime} min
+                  </span>
+                  <span>
+                    <strong>Top moods</strong> {profile.topMoods.map((mood) => moodLabels[mood]).join(", ")}
+                  </span>
+                </>
+              ) : (
+                <span>Rate a watched movie together and this will start learning your taste.</span>
+              )}
+            </section>
+
+            <section className="watchlist">
+              <div className="section-heading">
+                <h2>Watchlist</h2>
+                <span>{state.movies.length} movies</span>
+              </div>
+              {state.movies.length ? (
+                <div className="movie-grid">
+                  {state.movies.map((movie) => (
+                    <MovieCard
+                      key={movie.id}
+                      movie={movie}
+                      score={matchScore(movie, profile)}
+                      state={state}
+                      onTrailer={() => setTrailerMovie(movie)}
+                      onRate={() => setRatingMovie(movie)}
+                      onToggleWatched={() =>
+                        updateMovie(movie.id, (current) => ({
+                          ...current,
+                          status: current.status === "watched" ? "unwatched" : "watched",
+                          watchedAt: current.status === "watched" ? undefined : todayIso(),
+                        }))
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="No maybes yet" body="Start with one comfort pick and one wild card. That is usually enough to get moving." />
+              )}
+            </section>
+          </>
+        )}
+
+        {view === "history" && (
+          <section className="panel history-panel">
+            <div className="section-heading">
+              <h2>History</h2>
+              <span>{watchedMovies.length} nights</span>
+            </div>
+            {watchedMovies.length ? (
+              <div className="history-list">
+                {watchedMovies.map((movie) => (
+                  <article key={movie.id}>
+                    <img src={movie.posterUrl} alt="" />
+                    <div>
+                      <h3>{movie.title}</h3>
+                      <p>
+                        {formatDate(movie.watchedAt)} • Added by {partnerName(state, movie.addedBy)}
+                      </p>
+                      <small>
+                        {state.room.partnerA}: {movie.ratings.partnerA?.score ?? "-"} / {state.room.partnerB}:{" "}
+                        {movie.ratings.partnerB?.score ?? "-"}
+                      </small>
+                    </div>
+                  </article>
+                ))}
+              </div>
             ) : (
-              <EmptyState title="No movies match" body="Loosen a filter and the roulette wheel will behave itself again." />
+              <EmptyState title="No history yet" body="Once a pick survives the couch vote, it will live here." />
             )}
-          </div>
-
-          {selectedMovie && (
-            <div className="winner">
-              <span className="pill">Tonight's pick</span>
-              <div>
-                <h3>{selectedMovie.title}</h3>
-                <p>{selectedMovie.synopsis}</p>
-              </div>
-              <div className="winner-actions">
-                {selectedMovie.trailerUrl && <button onClick={() => setTrailerMovie(selectedMovie)}>Trailer</button>}
-                <button
-                  onClick={() =>
-                    updateMovie(selectedMovie.id, (movie) => ({
-                      ...movie,
-                      status: "watched",
-                      watchedAt: movie.watchedAt ?? todayIso(),
-                    }))
-                  }
-                >
-                  Mark watched
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className="panel add-panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Add a maybe</p>
-              <h2>Search, then toss it in</h2>
-            </div>
-            <span>{hasMovieProxy ? "Movie database connected" : "Demo mode"}</span>
-          </div>
-          <div className="search-row">
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a movie title" />
-            <button onClick={() => setManualOpen(true)}>Manual</button>
-          </div>
-          {searchLoading && <div className="loading-state">Checking the shelves...</div>}
-          {searchError && <div className="error-state">{searchError}</div>}
-          {!query && (
-            <div className="hint">
-              {hasMovieProxy ? "Live movie search is available." : "No movie database proxy found, so demo search uses a curated seed list."}
-            </div>
-          )}
-          {query && !searchLoading && !searchResults.length && (
-            <EmptyState title="Nothing surfaced" body="Try another title or add it manually with your own details." />
-          )}
-          <div className="candidate-list">
-            {searchResults.map((movie) => {
-              const alreadyAdded = state.movies.some((item) => item.title.toLowerCase() === movie.title.toLowerCase());
-              return (
-                <article key={`${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
-                  <img src={movie.posterUrl} alt="" />
-                  <div>
-                    <h3>{movie.title}</h3>
-                    <p>
-                      {movie.year} • {movie.runtime} min
-                    </p>
-                    <small>{movie.genres.join(" / ")}</small>
-                  </div>
-                  <button disabled={alreadyAdded} onClick={() => addMovie(movie)}>
-                    {alreadyAdded ? "Added" : "Add"}
-                  </button>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="panel taste-panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Taste learning</p>
-              <h2>Your couple profile</h2>
-            </div>
-            <span>{profile.watchedCount} watched</span>
-          </div>
-          {profile.watchedCount ? (
-            <div className="taste-grid">
-              <TasteMetric label="Favorite genres" value={profile.favoriteGenres.join(", ")} />
-              <TasteMetric label="Preferred runtime" value={`${profile.preferredRuntime} minutes`} />
-              <TasteMetric label="Top moods" value={profile.topMoods.map((mood) => moodLabels[mood]).join(", ")} />
-            </div>
-          ) : (
-            <EmptyState title="Taste profile warming up" body="Rate a watched movie together and the match scores will get more personal." />
-          )}
-          <div className="ranking-list" role="list">
-            {moviesByMatch.slice(0, 5).map((movie) => (
-              <div key={movie.id} role="listitem">
-                <span>{movie.title}</span>
-                <strong>{matchScore(movie, profile)}%</strong>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="watchlist">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Watchlist</p>
-              <h2>The maybes</h2>
-            </div>
-            <span>{state.movies.length} movies</span>
-          </div>
-          {state.movies.length ? (
-            <div className="movie-grid">
-              {state.movies.map((movie) => (
-                <MovieCard
-                  key={movie.id}
-                  movie={movie}
-                  score={matchScore(movie, profile)}
-                  state={state}
-                  onTrailer={() => setTrailerMovie(movie)}
-                  onRate={() => setRatingMovie(movie)}
-                  onToggleWatched={() =>
-                    updateMovie(movie.id, (current) => ({
-                      ...current,
-                      status: current.status === "watched" ? "unwatched" : "watched",
-                      watchedAt: current.status === "watched" ? undefined : todayIso(),
-                    }))
-                  }
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="No maybes yet" body="Start with one comfort pick and one wild card. That is usually enough to get moving." />
-          )}
-        </section>
-
-        <section className="panel history-panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">History</p>
-              <h2>What you watched</h2>
-            </div>
-            <span>{watchedMovies.length} nights</span>
-          </div>
-          {watchedMovies.length ? (
-            <div className="history-list">
-              {watchedMovies.map((movie) => (
-                <article key={movie.id}>
-                  <img src={movie.posterUrl} alt="" />
-                  <div>
-                    <h3>{movie.title}</h3>
-                    <p>
-                      {formatDate(movie.watchedAt)} • Added by {partnerName(state, movie.addedBy)}
-                    </p>
-                    <small>
-                      {state.room.partnerA}: {movie.ratings.partnerA?.score ?? "-"} / {state.room.partnerB}:{" "}
-                      {movie.ratings.partnerB?.score ?? "-"}
-                    </small>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="No history yet" body="Once a pick survives the couch vote, it will live here." />
-          )}
-        </section>
+          </section>
+        )}
       </main>
       <footer className="credits">
         Movie data from{" "}
@@ -927,15 +959,6 @@ function EmptyState({ title, body }: { title: string; body: string }) {
     <div className="empty-state">
       <h3>{title}</h3>
       <p>{body}</p>
-    </div>
-  );
-}
-
-function TasteMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="taste-metric">
-      <span>{label}</span>
-      <strong>{value || "Still learning"}</strong>
     </div>
   );
 }
