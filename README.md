@@ -8,6 +8,7 @@ A mobile-first shared watchlist for two people who want movie night to start bef
 - Shared watchlist stored in `localStorage`
 - Demo mode with seeded movies, posters, moods, and YouTube trailer embeds
 - Optional movie search (via TheTVDB) through a server-side proxy so the API key is not exposed in the browser
+- Learned autocomplete that remembers successful titles and alternate names, then surfaces partial matches immediately
 - Roulette picker with max runtime, genre, mood, and unwatched filters
 - Separate partner ratings and private notes after watching
 - Couple taste profile based only on local ratings

@@ -60,6 +60,7 @@ export type MovieCandidate = {
   synopsis: string;
   posterUrl: string;
   trailerUrl?: string;
+  searchTerms?: string[];
 };
 
 export type RouletteFilters = {

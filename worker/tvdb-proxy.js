@@ -155,6 +155,11 @@ const searchMovies = async (query, env) => {
       );
 
       const trailer = extended.trailers?.map((item) => youtubeEmbedUrl(item.url)).find(Boolean);
+      const searchTerms = [
+        ...(result.aliases || []),
+        result.name_translated,
+        ...(result.translationsWithLang || []),
+      ].filter((term) => typeof term === "string" && term.trim());
 
       return {
         source: "tvdb",
@@ -168,6 +173,7 @@ const searchMovies = async (query, env) => {
           result.overview || extended.overview || "No synopsis yet. Add it to the maybe pile and let the room decide.",
         posterUrl: extended.image || result.image_url || result.poster || "/poster-placeholder.svg",
         trailerUrl: trailer,
+        searchTerms: Array.from(new Set(searchTerms)),
       };
     }),
   );

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
 import { createId, createRoom, loadState, resetState, saveState } from "./storage";
-import { hasMovieProxy, searchMovies } from "./movieSearch";
+import { getCachedMovieSuggestions, hasMovieProxy, searchMovies } from "./movieSearch";
 import type { AppState, Mood, Movie, MovieCandidate, PartnerId, RouletteFilters, TasteProfile } from "./types";
 
 const moodLabels: Record<Mood, string> = {
@@ -29,14 +29,18 @@ const averageRating = (movie: Movie) => {
   return scores.reduce((total, score) => total + score, 0) / scores.length;
 };
 
-const movieFromCandidate = (candidate: MovieCandidate, addedBy: PartnerId): Movie => ({
-  ...candidate,
-  id: createId(),
-  addedBy,
-  addedAt: todayIso(),
-  status: "unwatched",
-  ratings: {},
-});
+const movieFromCandidate = (candidate: MovieCandidate, addedBy: PartnerId): Movie => {
+  const movie = { ...candidate };
+  delete movie.searchTerms;
+  return {
+    ...movie,
+    id: createId(),
+    addedBy,
+    addedAt: todayIso(),
+    status: "unwatched",
+    ratings: {},
+  };
+};
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -219,6 +223,12 @@ function App() {
       return;
     }
 
+    const instantSuggestions = hasMovieProxy
+      ? getCachedMovieSuggestions(trimmed)
+      : demoCandidates.filter((movie) => movie.title.toLowerCase().includes(trimmed.toLowerCase()));
+    setSearchResults(instantSuggestions);
+    setSearchError("");
+
     let active = true;
     const timeout = window.setTimeout(async () => {
       setSearchLoading(true);
@@ -226,7 +236,13 @@ function App() {
       try {
         if (hasMovieProxy) {
           const proxyResults = await searchMovies(trimmed);
-          if (active) setSearchResults(proxyResults);
+          if (active) {
+            const mergedResults = [...proxyResults, ...getCachedMovieSuggestions(trimmed)].filter(
+              (movie, index, all) =>
+                all.findIndex((item) => item.tvdbId === movie.tvdbId && item.title === movie.title) === index,
+            );
+            setSearchResults(mergedResults.slice(0, 6));
+          }
         } else {
           const demoResults = demoCandidates.filter((movie) => movie.title.toLowerCase().includes(trimmed.toLowerCase()));
           if (active) setSearchResults(demoResults);
@@ -240,7 +256,7 @@ function App() {
       } finally {
         if (active) setSearchLoading(false);
       }
-    }, 280);
+    }, 180);
 
     return () => {
       active = false;
