@@ -2,8 +2,19 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
 import { createId, createRoom, loadState, resetState, saveState } from "./storage";
 import { getCachedMovieSuggestions, hasMovieProxy, searchMovies } from "./movieSearch";
-import { requestPasswordReset, signInWithEmail, signOut, signUpWithEmail, updatePassword, useAuth } from "./auth";
+import {
+  displayNameFor,
+  requestPasswordReset,
+  signInWithEmail,
+  signOut,
+  signUpWithEmail,
+  updatePassword,
+  useAuth,
+} from "./auth";
+import { CloudRoomModal } from "./CloudRoomModal";
+import { useCloudRoom } from "./cloudData";
 import { hasSupabase } from "./supabaseClient";
+import { Modal } from "./Modal";
 import type { AppState, Mood, Movie, MovieCandidate, PartnerId, RouletteFilters, TasteProfile } from "./types";
 
 const moodLabels: Record<Mood, string> = {
@@ -184,6 +195,7 @@ function App() {
   const [roomOpen, setRoomOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const { user, passwordRecovery, clearPasswordRecovery } = useAuth();
+  const cloud = useCloudRoom(user?.id);
 
   useEffect(() => {
     if (passwordRecovery) setAccountOpen(true);
@@ -402,7 +414,7 @@ function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Movie Night Roulette</p>
-          <h1>{state.room.name}</h1>
+          <h1>{user ? (cloud.room?.name ?? "Set up your room") : state.room.name}</h1>
         </div>
         <div className="topbar-actions">
           {hasSupabase && (
@@ -779,7 +791,19 @@ function App() {
           }}
         />
       )}
-      {roomOpen && (
+      {roomOpen && user && (
+        <CloudRoomModal
+          userId={user.id}
+          defaultName={displayNameFor(user)}
+          room={cloud.room}
+          members={cloud.members}
+          loading={cloud.loading}
+          error={cloud.error}
+          refresh={cloud.refresh}
+          onClose={() => setRoomOpen(false)}
+        />
+      )}
+      {roomOpen && !user && (
         <RoomModal
           state={state}
           onClose={() => setRoomOpen(false)}
@@ -1311,7 +1335,9 @@ function AccountModal({
     }
 
     const result =
-      mode === "signup" ? await signUpWithEmail(emailValue, password) : await signInWithEmail(emailValue, password);
+      mode === "signup"
+        ? await signUpWithEmail(emailValue, password, String(form.get("displayName") || ""))
+        : await signInWithEmail(emailValue, password);
     setBusy(false);
 
     if (!result.ok) {
@@ -1330,6 +1356,12 @@ function AccountModal({
   return (
     <Modal title={title} onClose={onClose}>
       <form className="modal-form" onSubmit={submit}>
+        {mode === "signup" && (
+          <label>
+            Your name
+            <input name="displayName" required maxLength={40} autoComplete="given-name" placeholder="What should your partner see?" />
+          </label>
+        )}
         <label>
           Email
           <input name="email" type="email" required autoComplete="email" placeholder="you@example.com" />
@@ -1364,38 +1396,6 @@ function AccountModal({
         )}
       </form>
     </Modal>
-  );
-}
-
-function Modal({ title, children, onClose, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className={wide ? "modal wide" : "modal"}>
-        <div className="modal-heading">
-          <h2>{title}</h2>
-          <button onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 }
 

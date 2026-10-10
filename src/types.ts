@@ -76,3 +76,14 @@ export type TasteProfile = {
   preferredRuntime: number;
   watchedCount: number;
 };
+
+export type CloudRoom = {
+  id: string;
+  name: string;
+  inviteCode: string;
+};
+
+export type CloudMember = {
+  userId: string;
+  displayName: string;
+};

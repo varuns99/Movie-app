@@ -63,11 +63,23 @@ export const updatePassword = async (password: string): Promise<AuthResult> => {
 const messageFrom = (error: unknown) =>
   error instanceof Error && error.message ? error.message : "Something went wrong. Please try again.";
 
-export const signUpWithEmail = async (email: string, password: string): Promise<AuthResult> => {
+// The name someone chose at sign-up (stored on their account), falling back to
+// the part of their email before the @ for accounts made before names existed.
+export const displayNameFor = (user: User | null) => {
+  const chosen = user?.user_metadata?.display_name;
+  if (typeof chosen === "string" && chosen.trim()) return chosen.trim();
+  return user?.email?.split("@")[0] ?? "";
+};
+
+export const signUpWithEmail = async (email: string, password: string, displayName: string): Promise<AuthResult> => {
   if (!supabase) return { ok: false, message: "Accounts are not set up for this site yet." };
 
   try {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { display_name: displayName.trim() } },
+    });
     if (error) return { ok: false, message: error.message };
 
     // With "Confirm email" turned on in Supabase, no session comes back until the
