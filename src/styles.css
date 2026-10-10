@@ -1188,3 +1188,27 @@ input[type="range"] {
   color: var(--muted);
   line-height: 1.5;
 }
+
+.rating-summary strong.pending {
+  color: #ffb4a8;
+  background: rgba(230, 96, 108, 0.14);
+}
+
+.rating-pending {
+  color: #ffb4a8;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.rating-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.history-list small.history-note {
+  white-space: normal;
+  font-style: italic;
+}

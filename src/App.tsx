@@ -43,6 +43,19 @@ const averageRating = (movie: Movie) => {
   return scores.reduce((total, score) => total + score, 0) / scores.length;
 };
 
+// A rating average is only "final" once everyone in the room has rated.
+const ratingProgress = (movie: Movie, members: Member[]) => {
+  const waiting = members.filter((member) => !movie.ratings[member.id]);
+  return { complete: waiting.length === 0, waitingFor: waiting.map((member) => member.displayName) };
+};
+
+const ratingLine = (movie: Movie, members: Member[]) => {
+  const scores = members.map((member) => `${member.displayName}: ${movie.ratings[member.id]?.score ?? "-"}`).join(" / ");
+  const avg = averageRating(movie);
+  if (!avg) return scores;
+  return `${scores} • Avg ${avg.toFixed(1)}${ratingProgress(movie, members).complete ? "" : "*"}`;
+};
+
 const movieFromCandidate = (candidate: MovieCandidate, addedBy: MemberId): Movie => {
   const movie = { ...candidate };
   delete movie.searchTerms;
@@ -788,7 +801,6 @@ function App() {
                         movie={movie}
                         score={matchScore(movie, profile)}
                         members={members}
-                        canRate={!cloudActive}
                         onTrailer={() => setTrailerMovie(movie)}
                         onRate={() => setRatingMovie(movie)}
                         onRemove={() => removeMovie(movie.id)}
@@ -835,9 +847,14 @@ function App() {
                       <p>
                         {formatDate(movie.watchedAt)} • Added by {memberNameOf(members, movie.addedBy)}
                       </p>
-                      <small>
-                        {members.map((member) => `${member.displayName}: ${movie.ratings[member.id]?.score ?? "-"}`).join(" / ")}
-                      </small>
+                      <small>{ratingLine(movie, members)}</small>
+                      {members
+                        .filter((member) => movie.ratings[member.id]?.note)
+                        .map((member) => (
+                          <small key={member.id} className="history-note">
+                            {member.displayName}: “{movie.ratings[member.id]?.note}”
+                          </small>
+                        ))}
                     </div>
                   </article>
                 ))}
@@ -897,9 +914,21 @@ function App() {
       {ratingMovie && (
         <RatingModal
           members={members}
+          currentMemberId={cloudActive ? user?.id : undefined}
           movie={movies.find((movie) => movie.id === ratingMovie.id) ?? ratingMovie}
           onClose={() => setRatingMovie(null)}
           onSave={(movieId, partner, score, note) => {
+            if (cloudActive && user) {
+              const existing = movies.find((movie) => movie.id === movieId);
+              setActionError("");
+              cloudMovies.saveRating(movieId, user.id, score, note).then(async (result) => {
+                reportFailure(result);
+                if (result.ok && existing && existing.status !== "watched") {
+                  reportFailure(await cloudMovies.setStatus(movieId, "watched", existing.watchedAt ?? todayIso()));
+                }
+              });
+              return;
+            }
             updateMovie(movieId, (movie) => ({
               ...movie,
               status: "watched",
@@ -999,20 +1028,23 @@ type MovieCardProps = {
   movie: Movie;
   score: number;
   members: Member[];
-  canRate: boolean;
   onTrailer: () => void;
   onRate: () => void;
   onRemove: () => void;
   onToggleWatched: () => void;
 };
 
-function MovieCard({ movie, score, members, canRate, onTrailer, onRate, onRemove, onToggleWatched }: MovieCardProps) {
+function MovieCard({ movie, score, members, onTrailer, onRate, onRemove, onToggleWatched }: MovieCardProps) {
   const avg = averageRating(movie);
+  const progress = ratingProgress(movie, members);
+  const pending = movie.status === "watched" && !progress.complete;
   return (
     <article className="movie-card">
       <div className="poster-wrap">
         <img src={movie.posterUrl} alt="" loading="lazy" />
-        <span>{score}%</span>
+        <span>
+          {score}%{pending ? "*" : ""}
+        </span>
       </div>
       <div className="movie-content">
         <div className="movie-title-row">
@@ -1043,16 +1075,18 @@ function MovieCard({ movie, score, members, canRate, onTrailer, onRate, onRemove
                 {member.displayName}: {movie.ratings[member.id]?.score ?? "-"}
               </span>
             ))}
-            <strong>Avg {avg ? avg.toFixed(1) : "-"}</strong>
+            <strong className={pending ? "pending" : undefined}>
+              Avg {avg ? avg.toFixed(1) : "-"}
+              {pending ? "*" : ""}
+            </strong>
           </div>
         )}
+        {pending && <small className="rating-pending">* Waiting for {progress.waitingFor.join(" and ")} to rate</small>}
         <div className="card-actions">
           <button disabled={!movie.trailerUrl} onClick={onTrailer}>
             Trailer
           </button>
-          <button onClick={onRate} disabled={!canRate} title={canRate ? undefined : "Ratings for shared rooms are coming soon"}>
-            Rate
-          </button>
+          <button onClick={onRate}>Rate</button>
           <button className="remove-button" onClick={onRemove}>
             Remove
           </button>
@@ -1220,11 +1254,13 @@ function RoomModal({
 
 function RatingModal({
   members,
+  currentMemberId,
   movie,
   onClose,
   onSave,
 }: {
   members: Member[];
+  currentMemberId?: MemberId;
   movie: Movie;
   onClose: () => void;
   onSave: (movieId: string, partner: MemberId, score: number, note: string) => void;
@@ -1233,7 +1269,15 @@ function RatingModal({
     <Modal title={`Rate ${movie.title}`} onClose={onClose}>
       <div className="rating-modal">
         {members.map((member) => (
-          <PartnerRatingForm key={member.id} partner={member.id} name={member.displayName} movie={movie} onSave={onSave} />
+          <PartnerRatingForm
+            key={member.id}
+            partner={member.id}
+            name={member.displayName}
+            isYou={member.id === currentMemberId}
+            editable={!currentMemberId || member.id === currentMemberId}
+            movie={movie}
+            onSave={onSave}
+          />
         ))}
         <div className="modal-actions">
           <button className="primary-button" onClick={onClose}>
@@ -1248,27 +1292,57 @@ function RatingModal({
 function PartnerRatingForm({
   partner,
   name,
+  isYou,
+  editable,
   movie,
   onSave,
 }: {
   partner: MemberId;
   name: string;
+  isYou: boolean;
+  editable: boolean;
   movie: Movie;
   onSave: (movieId: string, partner: MemberId, score: number, note: string) => void;
 }) {
   const existing = movie.ratings[partner];
   const [score, setScore] = useState(existing?.score ?? 4);
   const [note, setNote] = useState(existing?.note ?? "");
+  const [saved, setSaved] = useState(false);
+
+  if (!editable) {
+    return (
+      <div className="partner-rating">
+        <div>
+          <h3>{name}</h3>
+          <span>{existing ? `${existing.score}/5` : "Not rated yet"}</span>
+        </div>
+        {existing?.note && <p className="rating-note">“{existing.note}”</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="partner-rating">
       <div>
-        <h3>{name}</h3>
+        <h3>{isYou ? `${name} (you)` : name}</h3>
         <span>{score}/5</span>
       </div>
       <input type="range" min="1" max="5" step="1" value={score} onChange={(event) => setScore(Number(event.target.value))} />
-      <textarea value={note} rows={3} onChange={(event) => setNote(event.target.value)} placeholder="Private note" />
-      <button onClick={() => onSave(movie.id, partner, score, note)}>Save {name}'s rating</button>
+      <textarea
+        value={note}
+        rows={3}
+        onChange={(event) => setNote(event.target.value)}
+        placeholder="Add a note (everyone in the room can read it)"
+      />
+      <button
+        onClick={() => {
+          onSave(movie.id, partner, score, note);
+          setSaved(true);
+          window.setTimeout(() => setSaved(false), 1600);
+        }}
+      >
+        {saved ? "Saved ✓" : isYou ? "Save my rating" : `Save ${name}'s rating`}
+      </button>
     </div>
   );
 }

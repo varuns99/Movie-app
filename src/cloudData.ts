@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "./supabaseClient";
-import type { CloudMember, CloudRoom, Mood, Movie, MovieCandidate, WatchStatus } from "./types";
+import type { CloudMember, CloudRoom, Mood, Movie, MovieCandidate, Rating, WatchStatus } from "./types";
 
 export const DEFAULT_ROOM_NAME = "Unnamed Movie Room";
 
@@ -144,6 +144,7 @@ type MovieRow = {
   added_at: string;
   status: WatchStatus;
   watched_at: string | null;
+  ratings?: { user_id: string; score: number; note: string; rated_at: string }[];
 };
 
 const toMovie = (row: MovieRow): Movie => ({
@@ -162,8 +163,12 @@ const toMovie = (row: MovieRow): Movie => ({
   addedAt: row.added_at,
   status: row.status,
   watchedAt: row.watched_at ?? undefined,
-  // Per-person ratings are added in the next phase.
-  ratings: {},
+  ratings: Object.fromEntries(
+    (row.ratings ?? []).map((rating): [string, Rating] => [
+      rating.user_id,
+      { score: rating.score, note: rating.note, ratedAt: rating.rated_at },
+    ]),
+  ),
 });
 
 export const useCloudMovies = (roomId: string | null) => {
@@ -184,7 +189,7 @@ export const useCloudMovies = (roomId: string | null) => {
     try {
       const { data, error: queryError } = await supabase
         .from("movies")
-        .select("*")
+        .select("*, ratings(user_id, score, note, rated_at)")
         .eq("room_id", roomId)
         .order("added_at", { ascending: false });
       if (queryError) throw queryError;
@@ -270,5 +275,32 @@ export const useCloudMovies = (roomId: string | null) => {
     [],
   );
 
-  return { movies, loading, error, refresh, add, remove, setStatus };
+  const saveRating = useCallback(
+    async (movieId: string, userId: string, score: number, note: string): Promise<ActionResult> => {
+      if (!supabase) return NOT_SET_UP;
+      const ratedAt = new Date().toISOString();
+      try {
+        const { error: upsertError } = await supabase
+          .from("ratings")
+          .upsert(
+            { movie_id: movieId, user_id: userId, score, note: note.trim(), rated_at: ratedAt },
+            { onConflict: "movie_id,user_id" },
+          );
+        if (upsertError) return { ok: false, message: upsertError.message };
+        setMovies((current) =>
+          current.map((movie) =>
+            movie.id === movieId
+              ? { ...movie, ratings: { ...movie.ratings, [userId]: { score, note: note.trim(), ratedAt } } }
+              : movie,
+          ),
+        );
+        return { ok: true };
+      } catch (caught) {
+        return { ok: false, message: messageFrom(caught) };
+      }
+    },
+    [],
+  );
+
+  return { movies, loading, error, refresh, add, remove, setStatus, saveRating };
 };
