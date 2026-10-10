@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
 import { createId, createRoom, loadState, resetState, saveState } from "./storage";
 import { getCachedMovieSuggestions, hasMovieProxy, searchMovies } from "./movieSearch";
+import { requestPasswordReset, signInWithEmail, signOut, signUpWithEmail, updatePassword, useAuth } from "./auth";
+import { hasSupabase } from "./supabaseClient";
 import type { AppState, Mood, Movie, MovieCandidate, PartnerId, RouletteFilters, TasteProfile } from "./types";
 
 const moodLabels: Record<Mood, string> = {
@@ -180,6 +182,12 @@ function App() {
   const [searchError, setSearchError] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const { user, passwordRecovery, clearPasswordRecovery } = useAuth();
+
+  useEffect(() => {
+    if (passwordRecovery) setAccountOpen(true);
+  }, [passwordRecovery]);
   const [trailerMovie, setTrailerMovie] = useState<Movie | null>(null);
   const [ratingMovie, setRatingMovie] = useState<Movie | null>(null);
   const [filters, setFilters] = useState<RouletteFilters>({
@@ -396,9 +404,16 @@ function App() {
           <p className="eyebrow">Movie Night Roulette</p>
           <h1>{state.room.name}</h1>
         </div>
-        <button className="ghost-button" onClick={() => setRoomOpen(true)}>
-          Room
-        </button>
+        <div className="topbar-actions">
+          {hasSupabase && (
+            <button className="ghost-button" onClick={() => setAccountOpen(true)}>
+              {user ? "Account" : "Sign in"}
+            </button>
+          )}
+          <button className="ghost-button" onClick={() => setRoomOpen(true)}>
+            Room
+          </button>
+        </div>
       </header>
 
       <nav className="view-tabs" aria-label="Sections">
@@ -754,6 +769,16 @@ function App() {
       </footer>
 
       {manualOpen && <ManualMovieModal onClose={() => setManualOpen(false)} onAdd={addMovie} />}
+      {accountOpen && (
+        <AccountModal
+          email={user?.email ?? null}
+          recovering={passwordRecovery}
+          onClose={() => {
+            setAccountOpen(false);
+            clearPasswordRecovery();
+          }}
+        />
+      )}
       {roomOpen && (
         <RoomModal
           state={state}
@@ -1171,6 +1196,173 @@ function TrailerModal({ movie, onClose }: { movie: Movie; onClose: () => void })
       ) : (
         <EmptyState title="No trailer yet" body="This pick is still perfectly allowed on the couch." />
       )}
+    </Modal>
+  );
+}
+
+function AccountModal({
+  email,
+  recovering,
+  onClose,
+}: {
+  email: string | null;
+  recovering: boolean;
+  onClose: () => void;
+}) {
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const switchMode = (next: "signin" | "signup" | "forgot") => {
+    setMode(next);
+    setError("");
+    setNotice("");
+  };
+
+  if (recovering) {
+    const submitNewPassword = async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const password = String(new FormData(event.currentTarget).get("password") || "");
+
+      setBusy(true);
+      setError("");
+      const result = await updatePassword(password);
+      setBusy(false);
+
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      onClose();
+    };
+
+    return (
+      <Modal title="Choose a new password" onClose={onClose}>
+        <form className="modal-form" onSubmit={submitNewPassword}>
+          <label>
+            New password
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={6}
+              autoComplete="new-password"
+              placeholder="At least 6 characters"
+            />
+          </label>
+          {error && <p className="auth-message error">{error}</p>}
+          <div className="modal-actions">
+            <button className="primary-button" type="submit" disabled={busy}>
+              {busy ? "One moment..." : "Save new password"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+    );
+  }
+
+  if (email) {
+    return (
+      <Modal title="Your account" onClose={onClose}>
+        <div className="modal-form">
+          <p className="account-email">
+            Signed in as <strong>{email}</strong>
+          </p>
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>
+              Close
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={async () => {
+                await signOut();
+                onClose();
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const emailValue = String(form.get("email") || "").trim();
+    const password = String(form.get("password") || "");
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    if (mode === "forgot") {
+      const result = await requestPasswordReset(emailValue);
+      setBusy(false);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      setNotice("If that email has an account, a reset link is on its way. Open it on this device.");
+      return;
+    }
+
+    const result =
+      mode === "signup" ? await signUpWithEmail(emailValue, password) : await signInWithEmail(emailValue, password);
+    setBusy(false);
+
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    if (result.needsEmailConfirmation) {
+      setNotice("Check your email for a confirmation link, then come back and sign in.");
+      return;
+    }
+    onClose();
+  };
+
+  const title = mode === "signup" ? "Create your account" : mode === "forgot" ? "Reset your password" : "Sign in";
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <form className="modal-form" onSubmit={submit}>
+        <label>
+          Email
+          <input name="email" type="email" required autoComplete="email" placeholder="you@example.com" />
+        </label>
+        {mode !== "forgot" && (
+          <label>
+            Password
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={6}
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              placeholder="At least 6 characters"
+            />
+          </label>
+        )}
+        {error && <p className="auth-message error">{error}</p>}
+        {notice && <p className="auth-message">{notice}</p>}
+        <div className="modal-actions">
+          <button type="button" onClick={() => switchMode(mode === "signin" ? "signup" : "signin")}>
+            {mode === "signin" ? "Create account" : "Back to sign in"}
+          </button>
+          <button className="primary-button" type="submit" disabled={busy}>
+            {busy ? "One moment..." : mode === "signup" ? "Sign up" : mode === "forgot" ? "Send reset link" : "Sign in"}
+          </button>
+        </div>
+        {mode === "signin" && (
+          <button type="button" className="link-button" onClick={() => switchMode("forgot")}>
+            Forgot your password?
+          </button>
+        )}
+      </form>
     </Modal>
   );
 }
