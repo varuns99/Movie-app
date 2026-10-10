@@ -1172,3 +1172,19 @@ input[type="range"] {
   color: var(--teal);
   font-weight: 800;
 }
+
+.setup-panel {
+  display: grid;
+  gap: 0.9rem;
+  justify-items: start;
+}
+
+.setup-panel h2,
+.setup-panel p {
+  margin: 0;
+}
+
+.setup-panel p {
+  color: var(--muted);
+  line-height: 1.5;
+}

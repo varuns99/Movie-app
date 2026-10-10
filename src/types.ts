@@ -1,4 +1,15 @@
+// The two fixed slots used by the signed-out demo room (and by data saved in
+// localStorage before accounts existed). Real accounts use their user id.
 export type PartnerId = "partnerA" | "partnerB";
+
+// Anyone who can add or rate movies: a user id when signed in, or "partnerA" /
+// "partnerB" in the local demo room.
+export type MemberId = string;
+
+export type Member = {
+  id: MemberId;
+  displayName: string;
+};
 
 export type WatchStatus = "unwatched" | "watched";
 
@@ -29,11 +40,11 @@ export type Movie = {
   synopsis: string;
   posterUrl: string;
   trailerUrl?: string;
-  addedBy: PartnerId;
+  addedBy: MemberId;
   addedAt: string;
   status: WatchStatus;
   watchedAt?: string;
-  ratings: Partial<Record<PartnerId, Rating>>;
+  ratings: Partial<Record<MemberId, Rating>>;
 };
 
 export type Room = {

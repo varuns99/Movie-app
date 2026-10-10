@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "./supabaseClient";
-import type { CloudMember, CloudRoom } from "./types";
+import type { CloudMember, CloudRoom, Mood, Movie, MovieCandidate, WatchStatus } from "./types";
 
 export const DEFAULT_ROOM_NAME = "Unnamed Movie Room";
 
@@ -122,4 +122,153 @@ export const renameMember = async (roomId: string, userId: string, displayName: 
   } catch (caught) {
     return { ok: false, message: messageFrom(caught) };
   }
+};
+
+// ---------------------------------------------------------------------------
+// Movies (the shared watchlist)
+// ---------------------------------------------------------------------------
+
+type MovieRow = {
+  id: string;
+  source: Movie["source"];
+  tvdb_id: number | null;
+  title: string;
+  year: string;
+  runtime: number;
+  genres: string[];
+  moods: string[];
+  synopsis: string;
+  poster_url: string;
+  trailer_url: string | null;
+  added_by: string;
+  added_at: string;
+  status: WatchStatus;
+  watched_at: string | null;
+};
+
+const toMovie = (row: MovieRow): Movie => ({
+  id: row.id,
+  source: row.source,
+  tvdbId: row.tvdb_id ?? undefined,
+  title: row.title,
+  year: row.year,
+  runtime: row.runtime,
+  genres: row.genres,
+  moods: row.moods as Mood[],
+  synopsis: row.synopsis,
+  posterUrl: row.poster_url,
+  trailerUrl: row.trailer_url ?? undefined,
+  addedBy: row.added_by,
+  addedAt: row.added_at,
+  status: row.status,
+  watchedAt: row.watched_at ?? undefined,
+  // Per-person ratings are added in the next phase.
+  ratings: {},
+});
+
+export const useCloudMovies = (roomId: string | null) => {
+  const [movies, setMovies] = useState<Movie[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const currentRoom = useRef<string | null>(roomId);
+
+  const refresh = useCallback(async () => {
+    currentRoom.current = roomId;
+    if (!supabase || !roomId) {
+      setMovies([]);
+      setError("");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error: queryError } = await supabase
+        .from("movies")
+        .select("*")
+        .eq("room_id", roomId)
+        .order("added_at", { ascending: false });
+      if (queryError) throw queryError;
+      // Ignore a slow answer if the person switched rooms or signed out meanwhile.
+      if (currentRoom.current !== roomId) return;
+      setMovies(((data ?? []) as MovieRow[]).map(toMovie));
+      setError("");
+    } catch (caught) {
+      if (currentRoom.current === roomId) setError(messageFrom(caught));
+    } finally {
+      if (currentRoom.current === roomId) setLoading(false);
+    }
+  }, [roomId]);
+
+  useEffect(() => {
+    setMovies([]);
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [refresh]);
+
+  const add = useCallback(
+    async (candidate: MovieCandidate, userId: string): Promise<ActionResult> => {
+      if (!supabase || !roomId) return NOT_SET_UP;
+      try {
+        const { data, error: insertError } = await supabase
+          .from("movies")
+          .insert({
+            room_id: roomId,
+            source: candidate.source,
+            tvdb_id: candidate.tvdbId ?? null,
+            title: candidate.title,
+            year: candidate.year,
+            runtime: candidate.runtime,
+            genres: candidate.genres,
+            moods: candidate.moods,
+            synopsis: candidate.synopsis,
+            poster_url: candidate.posterUrl,
+            trailer_url: candidate.trailerUrl ?? null,
+            added_by: userId,
+          })
+          .select("*")
+          .single();
+        if (insertError) return { ok: false, message: insertError.message };
+        setMovies((current) => [toMovie(data as MovieRow), ...current]);
+        return { ok: true };
+      } catch (caught) {
+        return { ok: false, message: messageFrom(caught) };
+      }
+    },
+    [roomId],
+  );
+
+  const remove = useCallback(async (movieId: string): Promise<ActionResult> => {
+    if (!supabase) return NOT_SET_UP;
+    try {
+      const { error: deleteError } = await supabase.from("movies").delete().eq("id", movieId);
+      if (deleteError) return { ok: false, message: deleteError.message };
+      setMovies((current) => current.filter((movie) => movie.id !== movieId));
+      return { ok: true };
+    } catch (caught) {
+      return { ok: false, message: messageFrom(caught) };
+    }
+  }, []);
+
+  const setStatus = useCallback(
+    async (movieId: string, status: WatchStatus, watchedAt: string | undefined): Promise<ActionResult> => {
+      if (!supabase) return NOT_SET_UP;
+      try {
+        const { error: updateError } = await supabase
+          .from("movies")
+          .update({ status, watched_at: watchedAt ?? null })
+          .eq("id", movieId);
+        if (updateError) return { ok: false, message: updateError.message };
+        setMovies((current) =>
+          current.map((movie) => (movie.id === movieId ? { ...movie, status, watchedAt } : movie)),
+        );
+        return { ok: true };
+      } catch (caught) {
+        return { ok: false, message: messageFrom(caught) };
+      }
+    },
+    [],
+  );
+
+  return { movies, loading, error, refresh, add, remove, setStatus };
 };
