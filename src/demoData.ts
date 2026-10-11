@@ -169,22 +169,22 @@ export const createDemoState = (): AppState => ({
   movies: [
     seedMovie(demoCandidates[0], 0, "partnerA", {
       watchedAt: daysAgo(8),
-      a: 4,
-      b: 5,
+      a: 8,
+      b: 10,
       noteA: "Twisty in the good way. Needed snacks for the last act.",
       noteB: "Still fun even when I pretend I understand all of it.",
     }),
     seedMovie(demoCandidates[5], 5, "partnerB", {
       watchedAt: daysAgo(5),
-      a: 5,
-      b: 4,
+      a: 10,
+      b: 8,
       noteA: "Soft without being mushy.",
       noteB: "A very strong blanket movie.",
     }),
     seedMovie(demoCandidates[8], 8, "partnerA", {
       watchedAt: daysAgo(2),
-      a: 4,
-      b: 3,
+      a: 8,
+      b: 6,
       noteA: "Brilliant, but maybe not right before sleep.",
       noteB: "Great. Also absolutely not low-effort.",
     }),

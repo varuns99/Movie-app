@@ -1212,3 +1212,30 @@ input[type="range"] {
   white-space: normal;
   font-style: italic;
 }
+
+.partner-rating .score-picker {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  justify-content: stretch;
+  gap: 0.4rem;
+}
+
+.score-picker button {
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+.score-picker button.active {
+  border-color: transparent;
+  color: #171019;
+  background: linear-gradient(135deg, var(--gold), #ff9e72);
+}
+
+@media (min-width: 480px) {
+  .partner-rating .score-picker {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+}

@@ -46,11 +46,30 @@ create index if not exists movies_room_id_idx on public.movies (room_id);
 create table if not exists public.ratings (
   movie_id uuid not null references public.movies (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
-  score integer not null check (score between 1 and 5),
+  score integer not null check (score between 1 and 10),
   note text not null default '',
   rated_at timestamptz not null default now(),
   primary key (movie_id, user_id)
 );
+
+-- One-time upgrade: ratings used to be 1-5 and are now 1-10. If the database
+-- still has the old 1-5 rule, widen it and double the existing scores so they
+-- mean the same thing. Does nothing on a fresh or already-upgraded database.
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'ratings_score_check'
+      and conrelid = 'public.ratings'::regclass
+      and pg_get_constraintdef(oid) like '%5%'
+  ) then
+    alter table public.ratings drop constraint ratings_score_check;
+    update public.ratings set score = score * 2;
+    alter table public.ratings add constraint ratings_score_check check (score between 1 and 10);
+  end if;
+end
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Helper functions used by the security policies.

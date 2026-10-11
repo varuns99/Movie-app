@@ -83,7 +83,7 @@ const calculateTasteProfile = (movies: Movie[]): TasteProfile => {
   let totalWeight = 0;
 
   watched.forEach((movie) => {
-    const weight = averageRating(movie) ?? 3;
+    const weight = averageRating(movie) ?? 6;
     totalWeight += weight;
     weightedRuntime += movie.runtime * weight;
     movie.genres.forEach((genre) => genreScores.set(genre, (genreScores.get(genre) ?? 0) + weight));
@@ -106,7 +106,7 @@ const calculateTasteProfile = (movies: Movie[]): TasteProfile => {
 
 const matchScore = (movie: Movie, profile: TasteProfile) => {
   if (movie.status === "watched") {
-    return Math.round((averageRating(movie) ?? 3.5) * 18);
+    return Math.round((averageRating(movie) ?? 7) * 9);
   }
 
   if (!profile.watchedCount) {
@@ -1252,6 +1252,27 @@ function RoomModal({
   );
 }
 
+const RATING_MAX = 10;
+
+function ScorePicker({ value, onChange, label }: { value: number | null; onChange: (score: number) => void; label: string }) {
+  return (
+    <div className="score-picker" role="radiogroup" aria-label={label}>
+      {Array.from({ length: RATING_MAX }, (_, index) => index + 1).map((score) => (
+        <button
+          key={score}
+          type="button"
+          role="radio"
+          aria-checked={value === score}
+          className={value === score ? "active" : ""}
+          onClick={() => onChange(score)}
+        >
+          {score}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function RatingModal({
   members,
   currentMemberId,
@@ -1265,85 +1286,85 @@ function RatingModal({
   onClose: () => void;
   onSave: (movieId: string, partner: MemberId, score: number, note: string) => void;
 }) {
+  // Signed in: you can only rate for yourself. Signed-out demo: both partners.
+  const editable = (member: Member) => !currentMemberId || member.id === currentMemberId;
+  const editableMembers = members.filter(editable);
+
+  const [drafts, setDrafts] = useState<Record<MemberId, { score: number | null; note: string }>>(() =>
+    Object.fromEntries(
+      editableMembers.map((member) => [
+        member.id,
+        { score: movie.ratings[member.id]?.score ?? null, note: movie.ratings[member.id]?.note ?? "" },
+      ]),
+    ),
+  );
+
+  const changed = (member: Member) => {
+    const draft = drafts[member.id];
+    const existing = movie.ratings[member.id];
+    return draft.score !== null && (draft.score !== existing?.score || draft.note.trim() !== (existing?.note ?? ""));
+  };
+  const canSave = editableMembers.some(changed);
+
+  const updateDraft = (id: MemberId, patch: Partial<{ score: number | null; note: string }>) =>
+    setDrafts((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
+
+  const save = () => {
+    editableMembers.filter(changed).forEach((member) => {
+      onSave(movie.id, member.id, drafts[member.id].score as number, drafts[member.id].note);
+    });
+    onClose();
+  };
+
   return (
     <Modal title={`Rate ${movie.title}`} onClose={onClose}>
       <div className="rating-modal">
-        {members.map((member) => (
-          <PartnerRatingForm
-            key={member.id}
-            partner={member.id}
-            name={member.displayName}
-            isYou={member.id === currentMemberId}
-            editable={!currentMemberId || member.id === currentMemberId}
-            movie={movie}
-            onSave={onSave}
-          />
-        ))}
+        {members.map((member) => {
+          const isYou = member.id === currentMemberId;
+          if (!editable(member)) {
+            const theirs = movie.ratings[member.id];
+            return (
+              <div key={member.id} className="partner-rating">
+                <div>
+                  <h3>{member.displayName}</h3>
+                  <span>{theirs ? `${theirs.score}/${RATING_MAX}` : "Not rated yet"}</span>
+                </div>
+                {theirs?.note && <p className="rating-note">“{theirs.note}”</p>}
+              </div>
+            );
+          }
+
+          const draft = drafts[member.id];
+          return (
+            <div key={member.id} className="partner-rating">
+              <div>
+                <h3>{isYou ? `${member.displayName} (you)` : member.displayName}</h3>
+                <span>{draft.score ? `${draft.score}/${RATING_MAX}` : "Pick a score"}</span>
+              </div>
+              <ScorePicker
+                value={draft.score}
+                label={`${member.displayName}'s score out of ${RATING_MAX}`}
+                onChange={(score) => updateDraft(member.id, { score })}
+              />
+              <textarea
+                value={draft.note}
+                rows={3}
+                onChange={(event) => updateDraft(member.id, { note: event.target.value })}
+                placeholder="Add a note (everyone in the room can read it)"
+              />
+            </div>
+          );
+        })}
         <div className="modal-actions">
-          <button className="primary-button" onClick={onClose}>
-            Done
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-button" type="button" disabled={!canSave} onClick={save}>
+            Save
           </button>
         </div>
       </div>
     </Modal>
-  );
-}
-
-function PartnerRatingForm({
-  partner,
-  name,
-  isYou,
-  editable,
-  movie,
-  onSave,
-}: {
-  partner: MemberId;
-  name: string;
-  isYou: boolean;
-  editable: boolean;
-  movie: Movie;
-  onSave: (movieId: string, partner: MemberId, score: number, note: string) => void;
-}) {
-  const existing = movie.ratings[partner];
-  const [score, setScore] = useState(existing?.score ?? 4);
-  const [note, setNote] = useState(existing?.note ?? "");
-  const [saved, setSaved] = useState(false);
-
-  if (!editable) {
-    return (
-      <div className="partner-rating">
-        <div>
-          <h3>{name}</h3>
-          <span>{existing ? `${existing.score}/5` : "Not rated yet"}</span>
-        </div>
-        {existing?.note && <p className="rating-note">“{existing.note}”</p>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="partner-rating">
-      <div>
-        <h3>{isYou ? `${name} (you)` : name}</h3>
-        <span>{score}/5</span>
-      </div>
-      <input type="range" min="1" max="5" step="1" value={score} onChange={(event) => setScore(Number(event.target.value))} />
-      <textarea
-        value={note}
-        rows={3}
-        onChange={(event) => setNote(event.target.value)}
-        placeholder="Add a note (everyone in the room can read it)"
-      />
-      <button
-        onClick={() => {
-          onSave(movie.id, partner, score, note);
-          setSaved(true);
-          window.setTimeout(() => setSaved(false), 1600);
-        }}
-      >
-        {saved ? "Saved ✓" : isYou ? "Save my rating" : `Save ${name}'s rating`}
-      </button>
-    </div>
   );
 }
 
