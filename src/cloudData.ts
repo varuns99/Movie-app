@@ -140,6 +140,7 @@ type MovieRow = {
   synopsis: string;
   poster_url: string;
   trailer_url: string | null;
+  language: string | null;
   added_by: string;
   added_at: string;
   status: WatchStatus;
@@ -159,6 +160,7 @@ const toMovie = (row: MovieRow): Movie => ({
   synopsis: row.synopsis,
   posterUrl: row.poster_url,
   trailerUrl: row.trailer_url ?? undefined,
+  language: row.language ?? undefined,
   addedBy: row.added_by,
   addedAt: row.added_at,
   status: row.status,
@@ -229,6 +231,7 @@ export const useCloudMovies = (roomId: string | null) => {
             synopsis: candidate.synopsis,
             poster_url: candidate.posterUrl,
             trailer_url: candidate.trailerUrl ?? null,
+            language: candidate.language ?? null,
             added_by: userId,
           })
           .select("*")
@@ -275,6 +278,20 @@ export const useCloudMovies = (roomId: string | null) => {
     [],
   );
 
+  // Movies saved before languages existed get theirs filled in once: the live
+  // movie service knows each film's original language.
+  const setLanguage = useCallback(async (movieId: string, language: string): Promise<ActionResult> => {
+    if (!supabase) return NOT_SET_UP;
+    try {
+      const { error: updateError } = await supabase.from("movies").update({ language }).eq("id", movieId);
+      if (updateError) return { ok: false, message: updateError.message };
+      setMovies((current) => current.map((movie) => (movie.id === movieId ? { ...movie, language } : movie)));
+      return { ok: true };
+    } catch (caught) {
+      return { ok: false, message: messageFrom(caught) };
+    }
+  }, []);
+
   const saveRating = useCallback(
     async (movieId: string, userId: string, score: number, note: string): Promise<ActionResult> => {
       if (!supabase) return NOT_SET_UP;
@@ -302,5 +319,5 @@ export const useCloudMovies = (roomId: string | null) => {
     [],
   );
 
-  return { movies, loading, error, refresh, add, remove, setStatus, saveRating };
+  return { movies, loading, error, refresh, add, remove, setStatus, setLanguage, saveRating };
 };

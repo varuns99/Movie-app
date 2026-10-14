@@ -35,6 +35,8 @@ export type Movie = {
   synopsis: string;
   posterUrl: string;
   trailerUrl?: string;
+  // Original language as a three-letter code ("eng"); unknown for older or manual movies.
+  language?: string;
   addedBy: MemberId;
   addedAt: string;
   status: WatchStatus;
@@ -61,6 +63,7 @@ export type MovieCandidate = {
 export type RouletteFilters = {
   maxRuntime: number;
   genre: string;
+  language: string;
   mood: Mood | "any";
   onlyUnwatched: boolean;
 };

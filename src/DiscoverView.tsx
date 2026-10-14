@@ -10,8 +10,10 @@ import {
   loadMovieDetails,
 } from "./discover";
 import type { DiscoverFilters } from "./discover";
+import { CollapsibleFilters } from "./CollapsibleFilters";
 import { EmptyState } from "./EmptyState";
 import { LockedFeature } from "./LockedFeature";
+import { PickCard } from "./PickCard";
 import { RouletteStrip } from "./RouletteStrip";
 import { useRoulette } from "./useRoulette";
 import type { MovieCandidate } from "./types";
@@ -96,21 +98,7 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
         <span>{loadState === "ready" ? `${items.length} to spin` : ""}</span>
       </div>
 
-      <button
-        type="button"
-        className="filters-toggle"
-        aria-expanded={filtersOpen}
-        aria-controls="discover-filters"
-        onClick={() => setFiltersOpen((open) => !open)}
-      >
-        <span className="filters-toggle-label">Filters</span>
-        <span className="filters-toggle-summary">{filterSummary}</span>
-        <svg className="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      <div id="discover-filters" className={filtersOpen ? "collapse open" : "collapse"} inert={!filtersOpen}>
-        <div className="collapse-inner">
+      <CollapsibleFilters id="discover-filters" summary={filterSummary} open={filtersOpen} onToggle={() => setFiltersOpen((open) => !open)}>
           <div className="filters">
             <label>
               Language
@@ -178,33 +166,26 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
               </LockedFeature>
             </div>
           </div>
-        </div>
-      </div>
+      </CollapsibleFilters>
 
       {details && (
-        <article className="best-card winner-card">
-          <img src={details.posterUrl} alt="" />
-          <div className="best-body">
-            <h2>Tonight&apos;s pick</h2>
-            <h3>{details.title}</h3>
-            <p>
-              {[details.year, `${details.runtime} min`, details.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
-            </p>
-            {details.synopsis && <p className="winner-synopsis">{details.synopsis}</p>}
-            <div className="winner-actions">
-              {details.trailerUrl && (
-                <button onClick={() => onTrailer({ title: details.title, trailerUrl: details.trailerUrl })}>Trailer</button>
-              )}
-              <LockedFeature
-                title="Sign in to save movies"
-                body="Add this to your shared watchlist, rate it together and keep a history."
-                onSignIn={onSignIn}
-              >
-                Save to watchlist
-              </LockedFeature>
-            </div>
-          </div>
-        </article>
+        <PickCard
+          title={details.title}
+          posterUrl={details.posterUrl}
+          meta={[details.year, `${details.runtime} min`, details.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
+          synopsis={details.synopsis}
+        >
+          {details.trailerUrl && (
+            <button onClick={() => onTrailer({ title: details.title, trailerUrl: details.trailerUrl })}>Trailer</button>
+          )}
+          <LockedFeature
+            title="Sign in to save movies"
+            body="Add this to your shared watchlist, rate it together and keep a history."
+            onSignIn={onSignIn}
+          >
+            Save to watchlist
+          </LockedFeature>
+        </PickCard>
       )}
 
       <div className="roulette-stage" aria-live="polite">

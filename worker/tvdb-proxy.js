@@ -165,6 +165,7 @@ const toCandidate = (result, extended) => {
       result.overview || extended.overview || "No synopsis yet. Add it to the maybe pile and let the room decide.",
     posterUrl: extended.image || result.image_url || result.poster || "/poster-placeholder.svg",
     trailerUrl: trailer,
+    language: result.primary_language || extended.originalLanguage || undefined,
     searchTerms: Array.from(new Set(searchTerms)),
   };
 };
@@ -275,7 +276,7 @@ const discoverMovies = async (params, env) => {
       moods: moodFromGenres(genreName ? [genreName] : []),
       synopsis: "",
       posterUrl: artworkUrl(movie.image),
-      language: lang,
+      language: movie.originalLanguage || lang,
     }));
 };
 

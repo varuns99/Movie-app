@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
 import { getCachedMovieSuggestions, hasMovieProxy, searchMovies } from "./movieSearch";
 import {
@@ -15,9 +15,12 @@ import { useCloudMovies, useCloudRoom } from "./cloudData";
 import { hasSupabase } from "./supabaseClient";
 import { Modal } from "./Modal";
 import { APP_NAME, APP_TAGLINE } from "./brand";
+import { CollapsibleFilters } from "./CollapsibleFilters";
 import { DiscoverView } from "./DiscoverView";
+import { DISCOVER_LANGUAGES, languageName, loadMovieDetails } from "./discover";
 import { EmptyState } from "./EmptyState";
 import { LockedFeature } from "./LockedFeature";
+import { PickCard } from "./PickCard";
 import { RouletteStrip } from "./RouletteStrip";
 import { SplashScreen } from "./SplashScreen";
 import { useRoulette } from "./useRoulette";
@@ -119,6 +122,7 @@ const filterMovies = (movies: Movie[], filters: RouletteFilters) =>
     if (filters.onlyUnwatched && movie.status !== "unwatched") return false;
     if (movie.runtime > filters.maxRuntime) return false;
     if (filters.genre !== "any" && !movie.genres.includes(filters.genre)) return false;
+    if (filters.language !== "any" && movie.language !== filters.language) return false;
     if (filters.mood !== "any" && !movie.moods.includes(filters.mood)) return false;
     return true;
   });
@@ -228,10 +232,13 @@ function App() {
   const [filters, setFilters] = useState<RouletteFilters>({
     maxRuntime: 150,
     genre: "any",
+    language: "any",
     mood: "any",
     onlyUnwatched: true,
   });
+  const [rouletteFiltersOpen, setRouletteFiltersOpen] = useState(true);
   const [watchlistGenre, setWatchlistGenre] = useState("any");
+  const [watchlistLanguage, setWatchlistLanguage] = useState("any");
   const [watchlistYear, setWatchlistYear] = useState("any");
   const [watchlistStatus, setWatchlistStatus] = useState<WatchStatusFilter>("any");
   const [watchlistMaxRuntime, setWatchlistMaxRuntime] = useState(DEFAULT_WATCHLIST_MAX_RUNTIME);
@@ -307,6 +314,13 @@ function App() {
     () => [...new Set(movies.flatMap((movie) => movie.genres))].sort((a, b) => a.localeCompare(b)),
     [movies],
   );
+  const languages = useMemo(
+    () =>
+      [...new Set(movies.map((movie) => movie.language).filter((code): code is string => Boolean(code)))].sort((a, b) =>
+        languageName(a).localeCompare(languageName(b)),
+      ),
+    [movies],
+  );
   const years = useMemo(
     () =>
       [...new Set(movies.map((movie) => movie.year).filter((year) => /^\d{4}$/.test(year)))].sort(
@@ -317,21 +331,24 @@ function App() {
   const profile = useMemo(() => calculateTasteProfile(movies), [movies]);
   const watchlistFiltersActive =
     watchlistGenre !== "any" ||
+    watchlistLanguage !== "any" ||
     watchlistYear !== "any" ||
     watchlistStatus !== "any" ||
     watchlistMaxRuntime !== DEFAULT_WATCHLIST_MAX_RUNTIME;
   const filteredWatchlist = useMemo(() => {
     const filtered = movies.filter((movie) => {
       if (watchlistGenre !== "any" && !movie.genres.includes(watchlistGenre)) return false;
+      if (watchlistLanguage !== "any" && movie.language !== watchlistLanguage) return false;
       if (watchlistYear !== "any" && movie.year !== watchlistYear) return false;
       if (watchlistStatus !== "any" && movie.status !== watchlistStatus) return false;
       if (movie.runtime > watchlistMaxRuntime) return false;
       return true;
     });
     return sortWatchlist(filtered, watchlistSort, profile);
-  }, [movies, watchlistGenre, watchlistYear, watchlistStatus, watchlistMaxRuntime, watchlistSort, profile]);
+  }, [movies, watchlistGenre, watchlistLanguage, watchlistYear, watchlistStatus, watchlistMaxRuntime, watchlistSort, profile]);
   const resetWatchlistFilters = () => {
     setWatchlistGenre("any");
+    setWatchlistLanguage("any");
     setWatchlistYear("any");
     setWatchlistStatus("any");
     setWatchlistMaxRuntime(DEFAULT_WATCHLIST_MAX_RUNTIME);
@@ -358,6 +375,41 @@ function App() {
     [movies],
   );
   const unwatchedCount = movies.length - watchedMovies.length;
+
+  const spinRoulette = () => {
+    setRouletteFiltersOpen(false);
+    roulette.spin();
+  };
+  const rouletteSummary = [
+    filters.language === "any" ? "Any language" : languageName(filters.language),
+    `Up to ${filters.maxRuntime} min`,
+    filters.genre === "any" ? "Any genre" : filters.genre,
+    filters.mood === "any" ? "Any mood" : moodLabels[filters.mood],
+    filters.onlyUnwatched ? "Unwatched only" : "Watched too",
+  ].join(" · ");
+
+  // Movies saved before languages existed get theirs filled in once, from the
+  // live movie service. Each movie is tried once per visit.
+  const triedLanguages = useRef(new Set<string>());
+  const { movies: savedMovies, setLanguage } = cloudMovies;
+  useEffect(() => {
+    if (!cloudActive) return;
+    const missing = savedMovies.filter(
+      (movie) => movie.tvdbId && !movie.language && !triedLanguages.current.has(movie.id),
+    );
+    if (!missing.length) return;
+    missing.forEach((movie) => triedLanguages.current.add(movie.id));
+    (async () => {
+      for (const movie of missing) {
+        try {
+          const details = await loadMovieDetails({ ...movie, source: "tvdb", searchTerms: undefined });
+          if (details.language) await setLanguage(movie.id, details.language);
+        } catch {
+          // Language is a nice-to-have; try again on the next visit.
+        }
+      }
+    })();
+  }, [cloudActive, savedMovies, setLanguage]);
 
   const reportFailure = (result: { ok: true } | { ok: false; message: string }) => {
     if (!result.ok) setActionError(result.message);
@@ -504,7 +556,7 @@ function App() {
                         {bestTonight.runtime} min · {bestTonight.genres.slice(0, 2).join(", ")}
                       </p>
                       <span className="score">{matchScore(bestTonight, profile)}% match</span>
-                      <button className="primary-button" onClick={roulette.spin}>
+                      <button className="primary-button" onClick={spinRoulette}>
                         Spin with this vibe
                       </button>
                     </div>
@@ -527,56 +579,106 @@ function App() {
                   <span>{rouletteMovies.length} eligible</span>
                 </div>
 
-                <div className="filters">
-                  <label>
-                    Max runtime
-                    <input
-                      type="range"
-                      min="80"
-                      max="190"
-                      step="5"
-                      value={filters.maxRuntime}
-                      disabled={roulette.spinning}
-                      onChange={(event) => setFilters({ ...filters, maxRuntime: Number(event.target.value) })}
-                    />
-                    <strong>{filters.maxRuntime} min</strong>
-                  </label>
-                  <label>
-                    Genre
-                    <select disabled={roulette.spinning} value={filters.genre} onChange={(event) => setFilters({ ...filters, genre: event.target.value })}>
-                      <option value="any">Any genre</option>
-                      {genres.map((genre) => (
-                        <option key={genre} value={genre}>
-                          {genre}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Mood
-                    <select
-                      disabled={roulette.spinning}
-                      value={filters.mood}
-                      onChange={(event) => setFilters({ ...filters, mood: event.target.value as Mood | "any" })}
+                <CollapsibleFilters
+                  id="roulette-filters"
+                  summary={rouletteSummary}
+                  open={rouletteFiltersOpen}
+                  onToggle={() => setRouletteFiltersOpen((open) => !open)}
+                >
+                  <div className="filters">
+                    <label>
+                      Language
+                      <select
+                        disabled={roulette.spinning}
+                        value={filters.language}
+                        onChange={(event) => setFilters({ ...filters, language: event.target.value })}
+                      >
+                        <option value="any">Any language</option>
+                        {languages.map((code) => (
+                          <option key={code} value={code}>
+                            {languageName(code)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Genre
+                      <select
+                        disabled={roulette.spinning}
+                        value={filters.genre}
+                        onChange={(event) => setFilters({ ...filters, genre: event.target.value })}
+                      >
+                        <option value="any">Any genre</option>
+                        {genres.map((genre) => (
+                          <option key={genre} value={genre}>
+                            {genre}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Mood
+                      <select
+                        disabled={roulette.spinning}
+                        value={filters.mood}
+                        onChange={(event) => setFilters({ ...filters, mood: event.target.value as Mood | "any" })}
+                      >
+                        <option value="any">Any mood</option>
+                        {moods.map((mood) => (
+                          <option key={mood} value={mood}>
+                            {moodLabels[mood]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Max runtime
+                      <input
+                        type="range"
+                        min="80"
+                        max="190"
+                        step="5"
+                        value={filters.maxRuntime}
+                        disabled={roulette.spinning}
+                        onChange={(event) => setFilters({ ...filters, maxRuntime: Number(event.target.value) })}
+                      />
+                      <strong>{filters.maxRuntime} min</strong>
+                    </label>
+                    <label className="toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={filters.onlyUnwatched}
+                        disabled={roulette.spinning}
+                        onChange={(event) => setFilters({ ...filters, onlyUnwatched: event.target.checked })}
+                      />
+                      Only unwatched
+                    </label>
+                  </div>
+                </CollapsibleFilters>
+
+                {selectedMovie && (
+                  <PickCard
+                    title={selectedMovie.title}
+                    posterUrl={selectedMovie.posterUrl}
+                    meta={[selectedMovie.year, `${selectedMovie.runtime} min`, selectedMovie.genres.slice(0, 2).join(", ")]
+                      .filter(Boolean)
+                      .join(" · ")}
+                    synopsis={selectedMovie.synopsis}
+                  >
+                    {selectedMovie.trailerUrl && <button onClick={() => setTrailerMovie(selectedMovie)}>Trailer</button>}
+                    <button
+                      onClick={() =>
+                        updateMovie(selectedMovie.id, (movie) => ({
+                          ...movie,
+                          status: "watched",
+                          watchedAt: movie.watchedAt ?? todayIso(),
+                        }))
+                      }
                     >
-                      <option value="any">Any mood</option>
-                      {moods.map((mood) => (
-                        <option key={mood} value={mood}>
-                          {moodLabels[mood]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="toggle-row">
-                    <input
-                      type="checkbox"
-                      checked={filters.onlyUnwatched}
-                      disabled={roulette.spinning}
-                      onChange={(event) => setFilters({ ...filters, onlyUnwatched: event.target.checked })}
-                    />
-                    Only unwatched
-                  </label>
-                </div>
+                      Mark watched
+                    </button>
+                  </PickCard>
+                )}
 
                 <div className="roulette-stage" aria-live="polite">
                   {rouletteMovies.length ? (
@@ -587,7 +689,7 @@ function App() {
                         spinning={roulette.spinning}
                         tileRefs={roulette.tileRefs}
                       />
-                      <button className="spin-button" disabled={roulette.spinning} onClick={roulette.spin}>
+                      <button className="spin-button" disabled={roulette.spinning} onClick={spinRoulette}>
                         {roulette.spinning ? "Choosing..." : "Spin roulette"}
                       </button>
                     </>
@@ -595,30 +697,6 @@ function App() {
                     <EmptyState title="No movies match" body="Loosen a filter and the roulette wheel will behave itself again." />
                   )}
                 </div>
-
-                {selectedMovie && (
-                  <div className="winner">
-                    <span className="pill">Tonight's pick</span>
-                    <div>
-                      <h3>{selectedMovie.title}</h3>
-                      <p>{selectedMovie.synopsis}</p>
-                    </div>
-                    <div className="winner-actions">
-                      {selectedMovie.trailerUrl && <button onClick={() => setTrailerMovie(selectedMovie)}>Trailer</button>}
-                      <button
-                        onClick={() =>
-                          updateMovie(selectedMovie.id, (movie) => ({
-                            ...movie,
-                            status: "watched",
-                            watchedAt: movie.watchedAt ?? todayIso(),
-                          }))
-                        }
-                      >
-                        Mark watched
-                      </button>
-                    </div>
-                  </div>
-                )}
               </section>
             </div>
           </>
@@ -672,6 +750,17 @@ function App() {
                     {genres.map((genre) => (
                       <option key={genre} value={genre}>
                         {genre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Language
+                  <select value={watchlistLanguage} onChange={(event) => setWatchlistLanguage(event.target.value)}>
+                    <option value="any">Any language</option>
+                    {languages.map((code) => (
+                      <option key={code} value={code}>
+                        {languageName(code)}
                       </option>
                     ))}
                   </select>
@@ -1002,6 +1091,7 @@ function MovieCard({ movie, score, members, onTrailer, onRate, onRemove, onToggl
             <p className="synopsis">{movie.synopsis}</p>
             <div className="meta-row">
               <span>Added by {memberNameOf(members, movie.addedBy)}</span>
+              {movie.language && <span>{languageName(movie.language)}</span>}
               <span>{movie.moods.map((mood) => moodLabels[mood]).join(", ")}</span>
             </div>
             <div className="card-actions">
@@ -1039,6 +1129,7 @@ function ManualMovieModal({ onClose, onAdd }: { onClose: () => void; onAdd: (mov
       synopsis: String(form.get("synopsis") || "A private pick added by the room."),
       posterUrl: String(form.get("posterUrl") || "/poster-placeholder.svg"),
       trailerUrl: String(form.get("trailerUrl") || "") || undefined,
+      language: String(form.get("language") || "") || undefined,
     };
     onAdd(movie);
     onClose();
@@ -1064,6 +1155,17 @@ function ManualMovieModal({ onClose, onAdd }: { onClose: () => void; onAdd: (mov
         <label>
           Genres
           <input name="genres" placeholder="Romance, Drama" />
+        </label>
+        <label>
+          Language
+          <select name="language" defaultValue="">
+            <option value="">Not sure</option>
+            {DISCOVER_LANGUAGES.filter((language) => language.code !== "any").map((language) => (
+              <option key={language.code} value={language.code}>
+                {language.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Synopsis

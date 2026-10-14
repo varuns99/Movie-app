@@ -41,6 +41,11 @@ create table if not exists public.movies (
   watched_at timestamptz
 );
 
+-- Added with the language filter: the movie's original language, as a
+-- three-letter code ("eng"). Null for manual picks and older rows; the app
+-- fills in older TVDB movies the next time they load.
+alter table public.movies add column if not exists language text;
+
 create index if not exists movies_room_id_idx on public.movies (room_id);
 
 create table if not exists public.ratings (

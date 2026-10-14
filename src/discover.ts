@@ -55,6 +55,10 @@ export const DISCOVER_GENRES = [
 ];
 
 export const MAX_DISCOVER_RUNTIME = 240;
+
+// "eng" -> "English"; unknown codes are shown as typed, in capitals.
+export const languageName = (code: string) =>
+  DISCOVER_LANGUAGES.find((language) => language.code === code)?.label ?? code.toUpperCase();
 const POOL_SIZE = 20;
 const YEAR_SAMPLES = 4;
 
