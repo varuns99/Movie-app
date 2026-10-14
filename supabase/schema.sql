@@ -46,6 +46,11 @@ create table if not exists public.movies (
 -- fills in older TVDB movies the next time they load.
 alter table public.movies add column if not exists language text;
 
+-- The film's English title when it differs from its own (original-language)
+-- title, e.g. title "Južina", english_title "Sirocco". Shown small under the
+-- title. Filled when a movie is added and for older movies on their next load.
+alter table public.movies add column if not exists english_title text;
+
 create index if not exists movies_room_id_idx on public.movies (room_id);
 
 create table if not exists public.ratings (

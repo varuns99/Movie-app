@@ -141,6 +141,7 @@ type MovieRow = {
   poster_url: string;
   trailer_url: string | null;
   language: string | null;
+  english_title: string | null;
   added_by: string;
   added_at: string;
   status: WatchStatus;
@@ -161,6 +162,7 @@ const toMovie = (row: MovieRow): Movie => ({
   posterUrl: row.poster_url,
   trailerUrl: row.trailer_url ?? undefined,
   language: row.language ?? undefined,
+  englishTitle: row.english_title ?? undefined,
   addedBy: row.added_by,
   addedAt: row.added_at,
   status: row.status,
@@ -232,6 +234,7 @@ export const useCloudMovies = (roomId: string | null) => {
             poster_url: candidate.posterUrl,
             trailer_url: candidate.trailerUrl ?? null,
             language: candidate.language ?? null,
+            english_title: candidate.englishTitle ?? null,
             added_by: userId,
           })
           .select("*")
@@ -278,19 +281,27 @@ export const useCloudMovies = (roomId: string | null) => {
     [],
   );
 
-  // Movies saved before languages existed get theirs filled in once: the live
-  // movie service knows each film's original language.
-  const setLanguage = useCallback(async (movieId: string, language: string): Promise<ActionResult> => {
-    if (!supabase) return NOT_SET_UP;
-    try {
-      const { error: updateError } = await supabase.from("movies").update({ language }).eq("id", movieId);
-      if (updateError) return { ok: false, message: updateError.message };
-      setMovies((current) => current.map((movie) => (movie.id === movieId ? { ...movie, language } : movie)));
-      return { ok: true };
-    } catch (caught) {
-      return { ok: false, message: messageFrom(caught) };
-    }
-  }, []);
+  // Movie facts the movie service can fill in after the fact (original language,
+  // English title). Only the fields given are written.
+  const updateInfo = useCallback(
+    async (movieId: string, patch: { language?: string; englishTitle?: string; title?: string }): Promise<ActionResult> => {
+      if (!supabase) return NOT_SET_UP;
+      const columns: { language?: string; english_title?: string; title?: string } = {};
+      if (patch.language) columns.language = patch.language;
+      if (patch.englishTitle) columns.english_title = patch.englishTitle;
+      if (patch.title) columns.title = patch.title;
+      if (!Object.keys(columns).length) return { ok: true };
+      try {
+        const { error: updateError } = await supabase.from("movies").update(columns).eq("id", movieId);
+        if (updateError) return { ok: false, message: updateError.message };
+        setMovies((current) => current.map((movie) => (movie.id === movieId ? { ...movie, ...patch } : movie)));
+        return { ok: true };
+      } catch (caught) {
+        return { ok: false, message: messageFrom(caught) };
+      }
+    },
+    [],
+  );
 
   const saveRating = useCallback(
     async (movieId: string, userId: string, score: number, note: string): Promise<ActionResult> => {
@@ -319,5 +330,5 @@ export const useCloudMovies = (roomId: string | null) => {
     [],
   );
 
-  return { movies, loading, error, refresh, add, remove, setStatus, setLanguage, saveRating };
+  return { movies, loading, error, refresh, add, remove, setStatus, updateInfo, saveRating };
 };

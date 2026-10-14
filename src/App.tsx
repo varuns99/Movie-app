@@ -22,13 +22,14 @@ import {
   DISCOVER_LANGUAGES,
   FIRST_YEAR,
   MAX_GENRES,
-  fetchMovieLanguage,
+  fetchMovieInfo,
   languageName,
 } from "./discover";
 import { ChipSelect } from "./ChipSelect";
 import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
 import { listSummary, yearSummary } from "./filterText";
+import { altTitle, titleKey } from "./titles";
 import { LockedFeature } from "./LockedFeature";
 import { PickCard } from "./PickCard";
 import { RouletteStrip } from "./RouletteStrip";
@@ -49,7 +50,7 @@ const moodLabels: Record<Mood, string> = {
 
 const todayIso = () => new Date().toISOString();
 
-const LANGUAGE_CHECK_KEY = "movie-night-roulette:language-checked-v1";
+const LANGUAGE_CHECK_KEY = "movie-night-roulette:movie-info-checked-v1";
 
 const readCheckedLanguages = () => {
   try {
@@ -432,11 +433,12 @@ function App() {
     filters.onlyUnwatched ? "Unwatched only" : "Watched too",
   ].join(" · ");
 
-  // Each saved TVDB movie's language is checked once per device: it fills in
-  // missing languages and corrects ones the movie service got wrong.
+  // Each saved TVDB movie is checked once per device: the movie service fills in
+  // a missing original language, corrects a wrong one, and supplies the English
+  // title to show small under a foreign film's own title.
   const checkedLanguages = useRef(readCheckedLanguages());
   const triedLanguages = useRef(new Set<string>());
-  const { movies: savedMovies, setLanguage } = cloudMovies;
+  const { movies: savedMovies, updateInfo } = cloudMovies;
   useEffect(() => {
     if (!cloudActive) return;
     const pending = savedMovies.filter(
@@ -447,17 +449,27 @@ function App() {
     (async () => {
       for (const movie of pending) {
         if (!movie.tvdbId) continue;
-        const { language, checked } = await fetchMovieLanguage(movie.tvdbId);
-        if (!language) continue; // Try again on a later visit.
-        // An unconfirmed (TVDB-only) language may fill a gap but never overwrites
-        // a stored one, and the movie is re-checked on a later visit.
-        if (language !== movie.language && (checked || !movie.language)) await setLanguage(movie.id, language);
-        if (!checked) continue;
+        const info = await fetchMovieInfo(movie.tvdbId);
+        if (!info.language && !info.englishTitle && !info.checked) continue; // Try again on a later visit.
+
+        const patch: { language?: string; englishTitle?: string; title?: string } = {};
+        // An unconfirmed (TVDB-only) language may fill a gap but never overwrites a stored one.
+        if (info.language && info.language !== movie.language && (info.checked || !movie.language)) {
+          patch.language = info.language;
+        }
+        if (info.englishTitle && info.englishTitle !== movie.englishTitle) patch.englishTitle = info.englishTitle;
+        // Saved under its English name but the film has its own: use the film's own.
+        if (info.title && info.englishTitle && titleKey(movie.title) === titleKey(info.englishTitle) && titleKey(info.title) !== titleKey(movie.title)) {
+          patch.title = info.title;
+        }
+        if (Object.keys(patch).length) await updateInfo(movie.id, patch);
+
+        if (!info.checked) continue; // Language not confirmed yet: look again on a later visit.
         checkedLanguages.current.add(movie.id);
         writeCheckedLanguages(checkedLanguages.current);
       }
     })();
-  }, [cloudActive, savedMovies, setLanguage]);
+  }, [cloudActive, savedMovies, updateInfo]);
 
   const reportFailure = (result: { ok: true } | { ok: false; message: string }) => {
     if (!result.ok) setActionError(result.message);
@@ -693,6 +705,7 @@ function App() {
                 {selectedMovie && (
                   <PickCard
                     title={selectedMovie.title}
+                    altTitle={altTitle(selectedMovie.title, selectedMovie.englishTitle)}
                     posterUrl={selectedMovie.posterUrl}
                     meta={[selectedMovie.year, `${selectedMovie.runtime} min`, selectedMovie.genres.slice(0, 2).join(", ")]
                       .filter(Boolean)
@@ -903,6 +916,9 @@ function App() {
                     <img src={movie.posterUrl} alt="" />
                     <div>
                       <h3>{movie.title}</h3>
+                      {altTitle(movie.title, movie.englishTitle) && (
+                        <small className="alt-title">({altTitle(movie.title, movie.englishTitle)})</small>
+                      )}
                       <p>
                         {formatDate(movie.watchedAt)} • Added by {memberNameOf(members, movie.addedBy)}
                       </p>
@@ -1084,6 +1100,9 @@ function MovieCard({ movie, score, members, onTrailer, onRate, onRemove, onToggl
       <div className="movie-content">
         <div className="movie-title-row">
           <h3>{movie.title}</h3>
+          {altTitle(movie.title, movie.englishTitle) && (
+            <p className="alt-title">({altTitle(movie.title, movie.englishTitle)})</p>
+          )}
           <p>
             {movie.year} · {movie.runtime} min
           </p>
@@ -1354,7 +1373,7 @@ function RatingModal({
 
 function TrailerModal({ movie, onClose }: { movie: { title: string; trailerUrl?: string }; onClose: () => void }) {
   return (
-    <Modal title={`${movie.title} trailer`} onClose={onClose} wide>
+    <Modal title={`${movie.title} trailer`} onClose={onClose} wide centered>
       {movie.trailerUrl ? (
         <div className="trailer-frame">
           <iframe

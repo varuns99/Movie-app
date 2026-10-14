@@ -6,12 +6,15 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  centered = false,
   actions,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  // Sits in the middle of the screen on phones too, instead of rising from the bottom.
+  centered?: boolean;
   // Extra controls shown in the header, left of the close button.
   actions?: ReactNode;
 }) {
@@ -25,7 +28,7 @@ export function Modal({
 
   return (
     <div
-      className="modal-backdrop"
+      className={centered ? "modal-backdrop centered" : "modal-backdrop"}
       role="dialog"
       aria-modal="true"
       aria-label={title}

@@ -296,19 +296,36 @@ const searchMovies = async (query, env) => {
   return { results: checked.candidates, complete: checked.complete };
 };
 
-// Prefer the English title and synopsis when TVDB has them, so a foreign film
-// that browses under its original title reads clearly once it is picked.
+// Compare titles ignoring case, accents and punctuation ("Južina" = "Juzina").
+const titleKey = (title) =>
+  String(title || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+// The title is the film's own: its name in its original language when TVDB has
+// one ("Južina"). The English title ("Sirocco") comes back separately, and only
+// when it is genuinely different, so the app can show it small underneath. The
+// synopsis prefers English.
 const movieDetails = async (id, env) => {
   const extended = (await tvdbFetch(`/movies/${id}/extended`, env, { meta: "translations" })).data || {};
   const translations = extended.translations || {};
-  const englishName = (translations.nameTranslations || []).find((item) => item.language === "eng")?.name;
+  const nameIn = (code) => (translations.nameTranslations || []).find((item) => item.language === code)?.name;
   const englishOverview = (translations.overviewTranslations || []).find((item) => item.language === "eng")?.overview;
   const checked = await withCheckedLanguages([toCandidate({ tvdb_id: id }, extended)]);
   const candidate = checked.candidates[0];
+
+  const originalTitle = (candidate.language && nameIn(candidate.language)) || candidate.title;
+  const englishName = nameIn("eng");
+  const englishTitle = englishName && titleKey(englishName) !== titleKey(originalTitle) ? englishName : undefined;
+
   return {
     ...candidate,
     languageChecked: checked.complete,
-    title: englishName || candidate.title,
+    title: originalTitle,
+    englishTitle,
     synopsis: englishOverview || extended.overview || "",
     posterUrl: artworkUrl(candidate.posterUrl),
   };

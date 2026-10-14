@@ -17,6 +17,7 @@
   --surface-2: #202125;
   --ink: #f2f2ef;
   --muted: #9a9ca3;
+  --faint: #7f828a;
   --line: rgba(255, 255, 255, 0.09);
   --line-strong: rgba(255, 255, 255, 0.18);
   --accent: #3ddc97;
@@ -39,6 +40,7 @@
     --surface-2: #eceeeb;
     --ink: #141516;
     --muted: #62666d;
+    --faint: #7a7e86;
     --line: rgba(0, 0, 0, 0.1);
     --line-strong: rgba(0, 0, 0, 0.2);
     --accent: #0e8a5c;
@@ -982,6 +984,11 @@ input[type="range"] {
   background: var(--scrim);
 }
 
+.modal-backdrop.centered {
+  place-items: center;
+  padding-bottom: 1rem;
+}
+
 .modal {
   width: min(100%, 560px);
   max-height: min(88dvh, 760px);
@@ -1659,4 +1666,25 @@ input[type="range"] {
 
 .modal-heading .link-button {
   min-height: 44px;
+}
+
+/* ---------- English title shown small under a film's own title ---------- */
+
+.alt-title {
+  color: var(--faint);
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.best-card p.alt-title,
+.movie-title-row p.alt-title {
+  margin: 0.15rem 0 0;
+  color: var(--faint);
+  font-size: 0.85rem;
+}
+
+.history-list small.alt-title {
+  color: var(--faint);
+  margin-top: 0;
 }

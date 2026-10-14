@@ -16,6 +16,7 @@ import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
 import { LockedFeature } from "./LockedFeature";
 import { listSummary, yearSummary } from "./filterText";
+import { altTitle } from "./titles";
 import { PickCard } from "./PickCard";
 import { RouletteStrip } from "./RouletteStrip";
 import { YearRange } from "./YearRange";
@@ -171,6 +172,7 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
       {details && (
         <PickCard
           title={details.title}
+          altTitle={altTitle(details.title, details.englishTitle)}
           posterUrl={details.posterUrl}
           meta={[details.year, `${details.runtime} min`, details.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
           synopsis={details.synopsis}

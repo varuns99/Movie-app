@@ -216,12 +216,13 @@ export const findLanguageMismatches = async (
   }
 };
 
-// A film's original language as best the movie service knows it (TVDB's label,
-// cross-checked against Wikidata). `checked` is false when Wikidata could not
-// be asked, in which case the language is only TVDB's unconfirmed label.
-export const fetchMovieLanguage = async (
+// What the movie service knows about a film beyond the basics: its original
+// language (TVDB's label cross-checked against Wikidata) and its English title
+// when that differs from its own. `checked` is false when Wikidata could not be
+// asked, in which case the language is only TVDB's unconfirmed label.
+export const fetchMovieInfo = async (
   tvdbId: number,
-): Promise<{ language?: string; checked: boolean }> => {
+): Promise<{ title?: string; language?: string; englishTitle?: string; checked: boolean }> => {
   if (!movieProxyUrl) return { checked: false };
   try {
     const url = new URL("/movie", movieProxyUrl);
@@ -229,7 +230,12 @@ export const fetchMovieLanguage = async (
     const response = await fetch(url);
     if (!response.ok) return { checked: false };
     const body = (await response.json()) as { result?: MovieCandidate & { languageChecked?: boolean } };
-    return { language: body.result?.language || undefined, checked: Boolean(body.result?.languageChecked) };
+    return {
+      title: body.result?.title || undefined,
+      language: body.result?.language || undefined,
+      englishTitle: body.result?.englishTitle || undefined,
+      checked: Boolean(body.result?.languageChecked),
+    };
   } catch {
     return { checked: false };
   }

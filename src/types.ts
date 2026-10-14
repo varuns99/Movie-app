@@ -37,6 +37,8 @@ export type Movie = {
   trailerUrl?: string;
   // Original language as a three-letter code ("eng"); unknown for older or manual movies.
   language?: string;
+  // English title when it differs from `title` (the film's own name).
+  englishTitle?: string;
   addedBy: MemberId;
   addedAt: string;
   status: WatchStatus;
@@ -58,6 +60,7 @@ export type MovieCandidate = {
   searchTerms?: string[];
   // Original language as a three-letter code ("eng", "jpn"); used by discovery filters.
   language?: string;
+  englishTitle?: string;
 };
 
 export type RouletteFilters = {
