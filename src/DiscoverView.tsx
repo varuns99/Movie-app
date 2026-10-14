@@ -7,6 +7,7 @@ import {
   MAX_DISCOVER_RUNTIME,
   defaultDiscoverFilters,
   discoverMovies,
+  findLanguageMismatches,
   loadMovieDetails,
 } from "./discover";
 import type { DiscoverFilters } from "./discover";
@@ -34,24 +35,35 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [sample, setSample] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [verifying, setVerifying] = useState(false);
   const [details, setDetails] = useState<MovieCandidate | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoadState("loading");
-    const timeout = window.setTimeout(() => {
-      discoverMovies(filters, controller.signal)
-        .then((result) => {
-          setMovies(result.movies);
-          setSample(result.sample);
-          setLoadState("ready");
-        })
-        .catch((error: unknown) => {
-          if (error instanceof DOMException && error.name === "AbortError") return;
-          setMovies([]);
-          setLoadState("error");
-        });
+    setVerifying(false);
+    const timeout = window.setTimeout(async () => {
+      try {
+        const result = await discoverMovies(filters, controller.signal);
+        setMovies(result.movies);
+        setSample(result.sample);
+        setLoadState("ready");
+
+        // The list shows right away; Spin waits a moment while Wikidata
+        // double-checks the language, then films in other languages drop out.
+        if (!result.sample && filters.language !== "any") {
+          setVerifying(true);
+          const wrong = await findLanguageMismatches(result.movies, filters.language, controller.signal);
+          if (controller.signal.aborted) return;
+          if (wrong.size) setMovies((current) => current.filter((movie) => !wrong.has(String(movie.tvdbId))));
+          setVerifying(false);
+        }
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setMovies([]);
+        setLoadState("error");
+      }
     }, 350);
     return () => {
       window.clearTimeout(timeout);
@@ -221,8 +233,8 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
               spinning={roulette.spinning}
               tileRefs={roulette.tileRefs}
             />
-            <button className="spin-button" disabled={roulette.spinning} onClick={spin}>
-              {roulette.spinning ? "Choosing..." : "Spin roulette"}
+            <button className="spin-button" disabled={roulette.spinning || verifying} onClick={spin}>
+              {roulette.spinning ? "Choosing..." : verifying ? "Checking languages..." : "Spin roulette"}
             </button>
             {sample && <p className="discover-note">Showing sample picks. Live movie search isn&apos;t set up here.</p>}
           </>

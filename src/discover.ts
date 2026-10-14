@@ -33,6 +33,11 @@ export const DISCOVER_LANGUAGES = [
   { code: "kor", label: "Korean" },
   { code: "zho", label: "Chinese" },
   { code: "hin", label: "Hindi" },
+  { code: "hrv", label: "Croatian" },
+  { code: "pol", label: "Polish" },
+  { code: "srp", label: "Serbian" },
+  { code: "tam", label: "Tamil" },
+  { code: "ukr", label: "Ukrainian" },
 ];
 
 export const DISCOVER_GENRES = [
@@ -56,9 +61,40 @@ export const DISCOVER_GENRES = [
 
 export const MAX_DISCOVER_RUNTIME = 240;
 
+// Languages the cross-check can report that are not in the browse list.
+const OTHER_LANGUAGE_NAMES: Record<string, string> = {
+  ara: "Arabic",
+  ben: "Bengali",
+  bos: "Bosnian",
+  bul: "Bulgarian",
+  ces: "Czech",
+  cnr: "Montenegrin",
+  dan: "Danish",
+  ell: "Greek",
+  fas: "Persian",
+  fin: "Finnish",
+  hbs: "Serbo-Croatian",
+  heb: "Hebrew",
+  hun: "Hungarian",
+  ind: "Indonesian",
+  isv: "Interslavic",
+  mal: "Malayalam",
+  nld: "Dutch",
+  nor: "Norwegian",
+  ron: "Romanian",
+  rus: "Russian",
+  slk: "Slovak",
+  slv: "Slovenian",
+  swe: "Swedish",
+  tel: "Telugu",
+  tha: "Thai",
+  tur: "Turkish",
+  vie: "Vietnamese",
+};
+
 // "eng" -> "English"; unknown codes are shown as typed, in capitals.
 export const languageName = (code: string) =>
-  DISCOVER_LANGUAGES.find((language) => language.code === code)?.label ?? code.toUpperCase();
+  DISCOVER_LANGUAGES.find((language) => language.code === code)?.label ?? OTHER_LANGUAGE_NAMES[code] ?? code.toUpperCase();
 const POOL_SIZE = 20;
 const YEAR_SAMPLES = 4;
 
@@ -129,6 +165,58 @@ export const discoverMovies = async (filters: DiscoverFilters, signal?: AbortSig
     posterUrl: movie.posterUrl?.startsWith("/") ? placeholderPosterUrl : movie.posterUrl || placeholderPosterUrl,
   }));
   return { movies: shuffle(movies).slice(0, POOL_SIZE), sample: false };
+};
+
+const VERIFY_WAIT_MS = 5000;
+
+// Browse results come from TVDB's own language labels. This asks which of them
+// Wikidata says are in another language, so they can be dropped. It never
+// throws: if the check is slow or fails, nothing is removed.
+export const findLanguageMismatches = async (
+  movies: MovieCandidate[],
+  language: string,
+  signal: AbortSignal,
+): Promise<Set<string>> => {
+  const ids = movies.map((movie) => movie.tvdbId).filter((id): id is number => typeof id === "number");
+  if (!movieProxyUrl || language === "any" || !ids.length) return new Set();
+
+  const patience = new AbortController();
+  const timer = window.setTimeout(() => patience.abort(), VERIFY_WAIT_MS);
+  const stop = () => patience.abort();
+  signal.addEventListener("abort", stop);
+  try {
+    const url = new URL("/verify", movieProxyUrl);
+    url.searchParams.set("lang", language);
+    url.searchParams.set("ids", ids.join(","));
+    const response = await fetch(url, { signal: patience.signal });
+    if (!response.ok) return new Set();
+    const body = (await response.json()) as { mismatched?: string[] };
+    return new Set((body.mismatched ?? []).map(String));
+  } catch {
+    return new Set();
+  } finally {
+    window.clearTimeout(timer);
+    signal.removeEventListener("abort", stop);
+  }
+};
+
+// A film's original language as best the movie service knows it (TVDB's label,
+// cross-checked against Wikidata). `checked` is false when Wikidata could not
+// be asked, in which case the language is only TVDB's unconfirmed label.
+export const fetchMovieLanguage = async (
+  tvdbId: number,
+): Promise<{ language?: string; checked: boolean }> => {
+  if (!movieProxyUrl) return { checked: false };
+  try {
+    const url = new URL("/movie", movieProxyUrl);
+    url.searchParams.set("id", String(tvdbId));
+    const response = await fetch(url);
+    if (!response.ok) return { checked: false };
+    const body = (await response.json()) as { result?: MovieCandidate & { languageChecked?: boolean } };
+    return { language: body.result?.language || undefined, checked: Boolean(body.result?.languageChecked) };
+  } catch {
+    return { checked: false };
+  }
 };
 
 // Discovery cards are light (title, year, poster). The synopsis and trailer are

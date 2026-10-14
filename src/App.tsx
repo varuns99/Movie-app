@@ -17,7 +17,7 @@ import { Modal } from "./Modal";
 import { APP_NAME, APP_TAGLINE } from "./brand";
 import { CollapsibleFilters } from "./CollapsibleFilters";
 import { DiscoverView } from "./DiscoverView";
-import { DISCOVER_LANGUAGES, languageName, loadMovieDetails } from "./discover";
+import { DISCOVER_LANGUAGES, fetchMovieLanguage, languageName } from "./discover";
 import { EmptyState } from "./EmptyState";
 import { LockedFeature } from "./LockedFeature";
 import { PickCard } from "./PickCard";
@@ -37,6 +37,24 @@ const moodLabels: Record<Mood, string> = {
 };
 
 const todayIso = () => new Date().toISOString();
+
+const LANGUAGE_CHECK_KEY = "movie-night-roulette:language-checked-v1";
+
+const readCheckedLanguages = () => {
+  try {
+    return new Set<string>(JSON.parse(window.localStorage.getItem(LANGUAGE_CHECK_KEY) ?? "[]") as string[]);
+  } catch {
+    return new Set<string>();
+  }
+};
+
+const writeCheckedLanguages = (ids: Set<string>) => {
+  try {
+    window.localStorage.setItem(LANGUAGE_CHECK_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Not critical: the check simply repeats on the next visit.
+  }
+};
 
 const formatDate = (value?: string) =>
   value
@@ -236,7 +254,7 @@ function App() {
     mood: "any",
     onlyUnwatched: true,
   });
-  const [rouletteFiltersOpen, setRouletteFiltersOpen] = useState(true);
+  const [rouletteFiltersOpen, setRouletteFiltersOpen] = useState(false);
   const [watchlistGenre, setWatchlistGenre] = useState("any");
   const [watchlistLanguage, setWatchlistLanguage] = useState("any");
   const [watchlistYear, setWatchlistYear] = useState("any");
@@ -388,25 +406,29 @@ function App() {
     filters.onlyUnwatched ? "Unwatched only" : "Watched too",
   ].join(" · ");
 
-  // Movies saved before languages existed get theirs filled in once, from the
-  // live movie service. Each movie is tried once per visit.
+  // Each saved TVDB movie's language is checked once per device: it fills in
+  // missing languages and corrects ones the movie service got wrong.
+  const checkedLanguages = useRef(readCheckedLanguages());
   const triedLanguages = useRef(new Set<string>());
   const { movies: savedMovies, setLanguage } = cloudMovies;
   useEffect(() => {
     if (!cloudActive) return;
-    const missing = savedMovies.filter(
-      (movie) => movie.tvdbId && !movie.language && !triedLanguages.current.has(movie.id),
+    const pending = savedMovies.filter(
+      (movie) => movie.tvdbId && !checkedLanguages.current.has(movie.id) && !triedLanguages.current.has(movie.id),
     );
-    if (!missing.length) return;
-    missing.forEach((movie) => triedLanguages.current.add(movie.id));
+    if (!pending.length) return;
+    pending.forEach((movie) => triedLanguages.current.add(movie.id));
     (async () => {
-      for (const movie of missing) {
-        try {
-          const details = await loadMovieDetails({ ...movie, source: "tvdb", searchTerms: undefined });
-          if (details.language) await setLanguage(movie.id, details.language);
-        } catch {
-          // Language is a nice-to-have; try again on the next visit.
-        }
+      for (const movie of pending) {
+        if (!movie.tvdbId) continue;
+        const { language, checked } = await fetchMovieLanguage(movie.tvdbId);
+        if (!language) continue; // Try again on a later visit.
+        // An unconfirmed (TVDB-only) language may fill a gap but never overwrites
+        // a stored one, and the movie is re-checked on a later visit.
+        if (language !== movie.language && (checked || !movie.language)) await setLanguage(movie.id, language);
+        if (!checked) continue;
+        checkedLanguages.current.add(movie.id);
+        writeCheckedLanguages(checkedLanguages.current);
       }
     })();
   }, [cloudActive, savedMovies, setLanguage]);

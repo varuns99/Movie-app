@@ -141,6 +141,113 @@ const tvdbFetch = async (path, env, params = {}) => {
   return response.json();
 };
 
+// ---------------------------------------------------------------------------
+// Language cross-check against Wikidata
+// ---------------------------------------------------------------------------
+// TVDB's language label is occasionally wrong (a 1970 Croatian film filed as
+// English). Wikidata links to TVDB by movie id and records each film's original
+// language, so we ask it as a second opinion. Its data is CC0. Every failure
+// path falls back to TVDB's own value, so a Wikidata outage never breaks search.
+
+const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
+const WIKIDATA_USER_AGENT = "TwoSeatsApp/1.0 (https://github.com/varuns99/Movie-app; movie language check)";
+const WIKIDATA_TTL_MS = 24 * 60 * 60 * 1000;
+// Search and details wait this long for Wikidata, then use TVDB's language. The
+// browse check runs separately (/verify) and may take longer: nobody waits on it.
+const WIKIDATA_TIMEOUT_MS = 2000;
+const WIKIDATA_ATTEMPTS = 2;
+const WIKIDATA_VERIFY_TIMEOUT_MS = 8000;
+const WIKIDATA_BATCH = 100;
+const wikidataCache = new Map();
+
+// Wikidata's codes mapped onto the ones TVDB uses.
+const normalizeLanguageCode = (code) => ({ cmn: "zho", yue: "zho", nob: "nor", nno: "nor" })[code] || code;
+// Wikidata often says "Serbo-Croatian" (hbs) where TVDB says Serbian or Croatian.
+const SOUTH_SLAVIC = ["srp", "hrv", "bos", "cnr", "hbs"];
+
+// tvdb id -> language codes Wikidata lists as the film's original language.
+const wikidataLanguages = async (ids, timeoutMs = WIKIDATA_TIMEOUT_MS, attempts = WIKIDATA_ATTEMPTS) => {
+  const unique = [...new Set(ids.filter(Boolean).map(String))];
+  const result = new Map();
+  const missing = [];
+  unique.forEach((id) => {
+    const hit = wikidataCache.get(id);
+    if (hit && Date.now() - hit.at < WIKIDATA_TTL_MS) result.set(id, hit.codes);
+    else missing.push(id);
+  });
+
+  for (let start = 0; start < missing.length; start += WIKIDATA_BATCH) {
+    const chunk = missing.slice(start, start + WIKIDATA_BATCH);
+    const values = chunk.map((id) => `"${id.replace(/[^0-9]/g, "")}"`).join(" ");
+    const query = `SELECT ?tvdb ?code WHERE { VALUES ?tvdb { ${values} } ?film wdt:P12196 ?tvdb . ?film wdt:P364 ?language . ?language wdt:P220 ?code }`;
+    // Wikidata sometimes turns a request away (busy, or shared-address limits);
+    // one quick retry recovers most of those. If it still fails we keep TVDB's
+    // language for these films and the caller is told they were not checked.
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const response = await fetch(WIKIDATA_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            accept: "application/sparql-results+json",
+            "user-agent": WIKIDATA_USER_AGENT,
+          },
+          body: new URLSearchParams({ query }),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!response.ok) throw new Error(`Wikidata ${response.status}`);
+        const body = await response.json();
+        const found = new Map();
+        (body.results?.bindings || []).forEach((row) => {
+          const id = row.tvdb.value;
+          found.set(id, [...(found.get(id) || []), row.code.value]);
+        });
+        chunk.forEach((id) => {
+          const codes = [...new Set((found.get(id) || []).map(normalizeLanguageCode))];
+          wikidataCache.set(id, { codes, at: Date.now() });
+          result.set(id, codes);
+        });
+        break;
+      } catch {
+        if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+  }
+  return result;
+};
+
+// The language to store for a film, given TVDB's label and Wikidata's opinion.
+const resolveLanguage = (tvdbCode, wikidataCodes) => {
+  const codes = wikidataCodes || [];
+  if (!codes.length) return tvdbCode;
+  if (tvdbCode && codes.includes(tvdbCode)) return tvdbCode;
+  if (tvdbCode && SOUTH_SLAVIC.includes(tvdbCode) && codes.includes("hbs")) return tvdbCode;
+  const specific = codes.filter((code) => code !== "hbs");
+  if (specific.length === 1) return specific[0];
+  return tvdbCode || specific[0];
+};
+
+// Browsing by language: keep a film unless Wikidata clearly lists other languages.
+const matchesLanguage = (wanted, wikidataCodes) => {
+  const codes = wikidataCodes || [];
+  if (!codes.length || codes.includes(wanted)) return true;
+  return SOUTH_SLAVIC.includes(wanted) && codes.includes("hbs");
+};
+
+// Returns the candidates with their language cross-checked, plus whether
+// Wikidata actually answered for every one (an unanswered film keeps TVDB's
+// language, and the caller must not treat that as verified or cache it long).
+const withCheckedLanguages = async (candidates) => {
+  const known = await wikidataLanguages(candidates.map((candidate) => candidate.tvdbId));
+  return {
+    complete: candidates.every((candidate) => known.has(String(candidate.tvdbId))),
+    candidates: candidates.map((candidate) => ({
+      ...candidate,
+      language: resolveLanguage(candidate.language, known.get(String(candidate.tvdbId))),
+    })),
+  };
+};
+
 const toCandidate = (result, extended) => {
   const genres = (extended.genres?.length ? extended.genres.map((genre) => genre.name) : result.genres || []).filter(
     Boolean,
@@ -174,7 +281,7 @@ const searchMovies = async (query, env) => {
   const searchBody = await tvdbFetch("/search", env, { query, type: "movie", limit: 6 });
   const results = (searchBody.data || []).filter((result) => result.tvdb_id).slice(0, 6);
 
-  return Promise.all(
+  const candidates = await Promise.all(
     results.map(async (result) => {
       let extended = {};
       try {
@@ -185,6 +292,8 @@ const searchMovies = async (query, env) => {
       return toCandidate(result, extended);
     }),
   );
+  const checked = await withCheckedLanguages(candidates);
+  return { results: checked.candidates, complete: checked.complete };
 };
 
 // Prefer the English title and synopsis when TVDB has them, so a foreign film
@@ -194,9 +303,11 @@ const movieDetails = async (id, env) => {
   const translations = extended.translations || {};
   const englishName = (translations.nameTranslations || []).find((item) => item.language === "eng")?.name;
   const englishOverview = (translations.overviewTranslations || []).find((item) => item.language === "eng")?.overview;
-  const candidate = toCandidate({ tvdb_id: id }, extended);
+  const checked = await withCheckedLanguages([toCandidate({ tvdb_id: id }, extended)]);
+  const candidate = checked.candidates[0];
   return {
     ...candidate,
+    languageChecked: checked.complete,
     title: englishName || candidate.title,
     synopsis: englishOverview || extended.overview || "",
     posterUrl: artworkUrl(candidate.posterUrl),
@@ -257,7 +368,7 @@ const discoverMovies = async (params, env) => {
   if (pages.every((page) => page === null)) throw new Error("TVDB filter failed");
 
   const seen = new Set();
-  return pages
+  const found = pages
     .flatMap((page) => page || [])
     .filter((movie) => {
       if (!movie?.id || !movie.image || seen.has(movie.id)) return false;
@@ -265,7 +376,11 @@ const discoverMovies = async (params, env) => {
       return !movie.runtime || movie.runtime <= maxRuntime;
     })
     .sort((a, b) => (b.score || 0) - (a.score || 0))
-    .slice(0, MAX_DISCOVER_RESULTS)
+    .slice(0, MAX_DISCOVER_RESULTS);
+
+  // These come straight from TVDB's language filter so the list is quick. The
+  // app then asks /verify which of them Wikidata says are in another language.
+  return found
     .map((movie) => ({
       source: "tvdb",
       tvdbId: Number(movie.id),
@@ -278,6 +393,27 @@ const discoverMovies = async (params, env) => {
       posterUrl: artworkUrl(movie.image),
       language: movie.originalLanguage || lang,
     }));
+};
+
+// Which of these TVDB films does Wikidata say are NOT in the wanted language?
+// Films Wikidata doesn't know, or that it can't be asked about right now, are
+// never reported, so the answer only ever removes clear mismatches.
+const verifyLanguage = async (params) => {
+  const wanted = params.get("lang") || "";
+  const ids = (params.get("ids") || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => /^\d{1,9}$/.test(id))
+    .slice(0, 100);
+  if (!wanted || !ids.length) return { mismatched: [], checked: 0, requested: 0 };
+
+  const known = await wikidataLanguages(ids, WIKIDATA_VERIFY_TIMEOUT_MS);
+  const checked = ids.filter((id) => known.has(id));
+  return {
+    mismatched: checked.filter((id) => !matchesLanguage(wanted, known.get(id))),
+    checked: checked.length,
+    requested: ids.length,
+  };
 };
 
 export default {
@@ -294,7 +430,7 @@ export default {
       return json({ ok: true }, {}, corsHeaders);
     }
 
-    const routes = ["/search", "/discover", "/movie"];
+    const routes = ["/search", "/discover", "/movie", "/verify"];
     if (request.method !== "GET" || !routes.includes(url.pathname)) {
       return json({ error: "Not found" }, { status: 404 }, corsHeaders);
     }
@@ -304,23 +440,33 @@ export default {
     }
 
     const cached = { headers: { "cache-control": "public, max-age=3600" } };
+    // An answer where Wikidata did not respond must not be stored for an hour.
+    const cacheIf = (complete) => (complete ? cached : { headers: { "cache-control": "no-store" } });
 
     try {
       if (url.pathname === "/discover") {
         return json({ results: await discoverMovies(url.searchParams, env) }, cached, corsHeaders);
       }
 
+      if (url.pathname === "/verify") {
+        const verdict = await verifyLanguage(url.searchParams);
+        // Only cache a complete answer; a partial one should be asked again.
+        return json(verdict, cacheIf(verdict.checked === verdict.requested), corsHeaders);
+      }
+
       if (url.pathname === "/movie") {
         const id = Number(url.searchParams.get("id"));
         if (!Number.isInteger(id) || id <= 0) return json({ error: "Bad movie id" }, { status: 400 }, corsHeaders);
-        return json({ result: await movieDetails(id, env) }, cached, corsHeaders);
+        const result = await movieDetails(id, env);
+        return json({ result }, cacheIf(result.languageChecked), corsHeaders);
       }
 
       const query = url.searchParams.get("query")?.trim() || "";
       if (query.length < 2 || query.length > 80) {
         return json({ results: [] }, {}, corsHeaders);
       }
-      return json({ results: await searchMovies(query, env) }, cached, corsHeaders);
+      const found = await searchMovies(query, env);
+      return json({ results: found.results }, cacheIf(found.complete), corsHeaders);
     } catch {
       return json({ error: "TVDB request failed" }, { status: 502 }, corsHeaders);
     }
