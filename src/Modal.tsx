@@ -6,11 +6,14 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  actions,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  // Extra controls shown in the header, left of the close button.
+  actions?: ReactNode;
 }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -33,9 +36,12 @@ export function Modal({
       <div className={wide ? "modal wide" : "modal"}>
         <div className="modal-heading">
           <h2>{title}</h2>
-          <button onClick={onClose} aria-label="Close">
-            ×
-          </button>
+          <div className="modal-heading-end">
+            {actions}
+            <button className="modal-close" onClick={onClose} aria-label="Close">
+              ×
+            </button>
+          </div>
         </div>
         {children}
       </div>

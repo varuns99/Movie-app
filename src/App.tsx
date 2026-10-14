@@ -15,14 +15,25 @@ import { useCloudMovies, useCloudRoom } from "./cloudData";
 import { hasSupabase } from "./supabaseClient";
 import { Modal } from "./Modal";
 import { APP_NAME, APP_TAGLINE } from "./brand";
-import { CollapsibleFilters } from "./CollapsibleFilters";
 import { DiscoverView } from "./DiscoverView";
-import { DISCOVER_LANGUAGES, fetchMovieLanguage, languageName } from "./discover";
+import {
+  ALL_YEARS,
+  CURRENT_YEAR,
+  DISCOVER_LANGUAGES,
+  FIRST_YEAR,
+  MAX_GENRES,
+  fetchMovieLanguage,
+  languageName,
+} from "./discover";
+import { ChipSelect } from "./ChipSelect";
 import { EmptyState } from "./EmptyState";
+import { FiltersSheet } from "./FiltersSheet";
+import { listSummary, yearSummary } from "./filterText";
 import { LockedFeature } from "./LockedFeature";
 import { PickCard } from "./PickCard";
 import { RouletteStrip } from "./RouletteStrip";
 import { SplashScreen } from "./SplashScreen";
+import { YearRange } from "./YearRange";
 import { useRoulette } from "./useRoulette";
 import type { Member, MemberId, Mood, Movie, MovieCandidate, RouletteFilters, TasteProfile } from "./types";
 
@@ -135,13 +146,31 @@ const matchScore = (movie: Movie, profile: TasteProfile) => {
   return Math.round(clamp(58 + genreHits * 8 + moodHits * 6 + runtimeFit + freshness, 45, 98));
 };
 
+// The full span of years means "any year", so movies with no usable year still match.
+const inYearRange = (year: string, from: number, to: number) => {
+  if (from <= FIRST_YEAR && to >= CURRENT_YEAR) return true;
+  const value = Number(year);
+  return Number.isFinite(value) && value >= from && value <= to;
+};
+
+const DEFAULT_ROULETTE_FILTERS: RouletteFilters = {
+  maxRuntime: 150,
+  genres: [],
+  language: "any",
+  moods: [],
+  yearFrom: FIRST_YEAR,
+  yearTo: CURRENT_YEAR,
+  onlyUnwatched: true,
+};
+
 const filterMovies = (movies: Movie[], filters: RouletteFilters) =>
   movies.filter((movie) => {
     if (filters.onlyUnwatched && movie.status !== "unwatched") return false;
     if (movie.runtime > filters.maxRuntime) return false;
-    if (filters.genre !== "any" && !movie.genres.includes(filters.genre)) return false;
+    if (filters.genres.length && !movie.genres.some((genre) => filters.genres.includes(genre))) return false;
     if (filters.language !== "any" && movie.language !== filters.language) return false;
-    if (filters.mood !== "any" && !movie.moods.includes(filters.mood)) return false;
+    if (filters.moods.length && !movie.moods.some((mood) => filters.moods.includes(mood))) return false;
+    if (!inYearRange(movie.year, filters.yearFrom, filters.yearTo)) return false;
     return true;
   });
 
@@ -247,17 +276,11 @@ function App() {
   }, [passwordRecovery]);
   const [trailerMovie, setTrailerMovie] = useState<{ title: string; trailerUrl?: string } | null>(null);
   const [ratingMovie, setRatingMovie] = useState<Movie | null>(null);
-  const [filters, setFilters] = useState<RouletteFilters>({
-    maxRuntime: 150,
-    genre: "any",
-    language: "any",
-    mood: "any",
-    onlyUnwatched: true,
-  });
-  const [rouletteFiltersOpen, setRouletteFiltersOpen] = useState(false);
-  const [watchlistGenre, setWatchlistGenre] = useState("any");
+  const [filters, setFilters] = useState<RouletteFilters>(DEFAULT_ROULETTE_FILTERS);
+  const [watchlistGenres, setWatchlistGenres] = useState<string[]>([]);
   const [watchlistLanguage, setWatchlistLanguage] = useState("any");
-  const [watchlistYear, setWatchlistYear] = useState("any");
+  const [watchlistYearFrom, setWatchlistYearFrom] = useState(FIRST_YEAR);
+  const [watchlistYearTo, setWatchlistYearTo] = useState(CURRENT_YEAR);
   const [watchlistStatus, setWatchlistStatus] = useState<WatchStatusFilter>("any");
   const [watchlistMaxRuntime, setWatchlistMaxRuntime] = useState(DEFAULT_WATCHLIST_MAX_RUNTIME);
   const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>("added-desc");
@@ -339,35 +362,40 @@ function App() {
       ),
     [movies],
   );
-  const years = useMemo(
-    () =>
-      [...new Set(movies.map((movie) => movie.year).filter((year) => /^\d{4}$/.test(year)))].sort(
-        (a, b) => Number(b) - Number(a),
-      ),
-    [movies],
-  );
   const profile = useMemo(() => calculateTasteProfile(movies), [movies]);
   const watchlistFiltersActive =
-    watchlistGenre !== "any" ||
+    watchlistGenres.length > 0 ||
     watchlistLanguage !== "any" ||
-    watchlistYear !== "any" ||
+    watchlistYearFrom > FIRST_YEAR ||
+    watchlistYearTo < CURRENT_YEAR ||
     watchlistStatus !== "any" ||
     watchlistMaxRuntime !== DEFAULT_WATCHLIST_MAX_RUNTIME;
   const filteredWatchlist = useMemo(() => {
     const filtered = movies.filter((movie) => {
-      if (watchlistGenre !== "any" && !movie.genres.includes(watchlistGenre)) return false;
+      if (watchlistGenres.length && !movie.genres.some((genre) => watchlistGenres.includes(genre))) return false;
       if (watchlistLanguage !== "any" && movie.language !== watchlistLanguage) return false;
-      if (watchlistYear !== "any" && movie.year !== watchlistYear) return false;
+      if (!inYearRange(movie.year, watchlistYearFrom, watchlistYearTo)) return false;
       if (watchlistStatus !== "any" && movie.status !== watchlistStatus) return false;
       if (movie.runtime > watchlistMaxRuntime) return false;
       return true;
     });
     return sortWatchlist(filtered, watchlistSort, profile);
-  }, [movies, watchlistGenre, watchlistLanguage, watchlistYear, watchlistStatus, watchlistMaxRuntime, watchlistSort, profile]);
+  }, [
+    movies,
+    watchlistGenres,
+    watchlistLanguage,
+    watchlistYearFrom,
+    watchlistYearTo,
+    watchlistStatus,
+    watchlistMaxRuntime,
+    watchlistSort,
+    profile,
+  ]);
   const resetWatchlistFilters = () => {
-    setWatchlistGenre("any");
+    setWatchlistGenres([]);
     setWatchlistLanguage("any");
-    setWatchlistYear("any");
+    setWatchlistYearFrom(FIRST_YEAR);
+    setWatchlistYearTo(CURRENT_YEAR);
     setWatchlistStatus("any");
     setWatchlistMaxRuntime(DEFAULT_WATCHLIST_MAX_RUNTIME);
   };
@@ -394,15 +422,13 @@ function App() {
   );
   const unwatchedCount = movies.length - watchedMovies.length;
 
-  const spinRoulette = () => {
-    setRouletteFiltersOpen(false);
-    roulette.spin();
-  };
+  const spinRoulette = () => roulette.spin();
   const rouletteSummary = [
     filters.language === "any" ? "Any language" : languageName(filters.language),
+    yearSummary(filters.yearFrom, filters.yearTo, FIRST_YEAR, CURRENT_YEAR),
     `Up to ${filters.maxRuntime} min`,
-    filters.genre === "any" ? "Any genre" : filters.genre,
-    filters.mood === "any" ? "Any mood" : moodLabels[filters.mood],
+    listSummary(filters.genres, "Any genre"),
+    listSummary(filters.moods.map((mood) => moodLabels[mood]), "Any mood"),
     filters.onlyUnwatched ? "Unwatched only" : "Watched too",
   ].join(" · ");
 
@@ -601,82 +627,68 @@ function App() {
                   <span>{rouletteMovies.length} eligible</span>
                 </div>
 
-                <CollapsibleFilters
-                  id="roulette-filters"
+                <FiltersSheet
+                  applied={filters}
+                  defaults={DEFAULT_ROULETTE_FILTERS}
+                  onApply={setFilters}
                   summary={rouletteSummary}
-                  open={rouletteFiltersOpen}
-                  onToggle={() => setRouletteFiltersOpen((open) => !open)}
+                  disabled={roulette.spinning}
                 >
-                  <div className="filters">
-                    <label>
-                      Language
-                      <select
-                        disabled={roulette.spinning}
-                        value={filters.language}
-                        onChange={(event) => setFilters({ ...filters, language: event.target.value })}
-                      >
-                        <option value="any">Any language</option>
-                        {languages.map((code) => (
-                          <option key={code} value={code}>
-                            {languageName(code)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Genre
-                      <select
-                        disabled={roulette.spinning}
-                        value={filters.genre}
-                        onChange={(event) => setFilters({ ...filters, genre: event.target.value })}
-                      >
-                        <option value="any">Any genre</option>
-                        {genres.map((genre) => (
-                          <option key={genre} value={genre}>
-                            {genre}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Mood
-                      <select
-                        disabled={roulette.spinning}
-                        value={filters.mood}
-                        onChange={(event) => setFilters({ ...filters, mood: event.target.value as Mood | "any" })}
-                      >
-                        <option value="any">Any mood</option>
-                        {moods.map((mood) => (
-                          <option key={mood} value={mood}>
-                            {moodLabels[mood]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Max runtime
-                      <input
-                        type="range"
-                        min="80"
-                        max="190"
-                        step="5"
-                        value={filters.maxRuntime}
-                        disabled={roulette.spinning}
-                        onChange={(event) => setFilters({ ...filters, maxRuntime: Number(event.target.value) })}
+                  {(draft, change) => (
+                    <div className="filters">
+                      <label>
+                        Language
+                        <select value={draft.language} onChange={(event) => change({ language: event.target.value })}>
+                          <option value="any">Any language</option>
+                          {languages.map((code) => (
+                            <option key={code} value={code}>
+                              {languageName(code)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="toggle-row">
+                        <input
+                          type="checkbox"
+                          checked={draft.onlyUnwatched}
+                          onChange={(event) => change({ onlyUnwatched: event.target.checked })}
+                        />
+                        Only unwatched
+                      </label>
+                      <YearRange
+                        from={draft.yearFrom}
+                        to={draft.yearTo}
+                        years={ALL_YEARS}
+                        onChange={(yearFrom, yearTo) => change({ yearFrom, yearTo })}
                       />
-                      <strong>{filters.maxRuntime} min</strong>
-                    </label>
-                    <label className="toggle-row">
-                      <input
-                        type="checkbox"
-                        checked={filters.onlyUnwatched}
-                        disabled={roulette.spinning}
-                        onChange={(event) => setFilters({ ...filters, onlyUnwatched: event.target.checked })}
+                      <label>
+                        Max runtime
+                        <input
+                          type="range"
+                          min="80"
+                          max="190"
+                          step="5"
+                          value={draft.maxRuntime}
+                          onChange={(event) => change({ maxRuntime: Number(event.target.value) })}
+                        />
+                        <strong>{draft.maxRuntime} min</strong>
+                      </label>
+                      <ChipSelect
+                        label="Genre"
+                        options={genres.map((genre) => ({ value: genre, label: genre }))}
+                        selected={draft.genres}
+                        max={MAX_GENRES}
+                        onChange={(selectedGenres) => change({ genres: selectedGenres })}
                       />
-                      Only unwatched
-                    </label>
-                  </div>
-                </CollapsibleFilters>
+                      <ChipSelect
+                        label="Mood"
+                        options={moods.map((mood) => ({ value: mood, label: moodLabels[mood] }))}
+                        selected={draft.moods}
+                        onChange={(selectedMoods) => change({ moods: selectedMoods as Mood[] })}
+                      />
+                    </div>
+                  )}
+                </FiltersSheet>
 
                 {selectedMovie && (
                   <PickCard
@@ -766,17 +778,6 @@ function App() {
               </div>
               <div className="filters">
                 <label>
-                  Genre
-                  <select value={watchlistGenre} onChange={(event) => setWatchlistGenre(event.target.value)}>
-                    <option value="any">Any genre</option>
-                    {genres.map((genre) => (
-                      <option key={genre} value={genre}>
-                        {genre}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
                   Language
                   <select value={watchlistLanguage} onChange={(event) => setWatchlistLanguage(event.target.value)}>
                     <option value="any">Any language</option>
@@ -787,17 +788,15 @@ function App() {
                     ))}
                   </select>
                 </label>
-                <label>
-                  Year
-                  <select value={watchlistYear} onChange={(event) => setWatchlistYear(event.target.value)}>
-                    <option value="any">Any year</option>
-                    {years.map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <YearRange
+                  from={watchlistYearFrom}
+                  to={watchlistYearTo}
+                  years={ALL_YEARS}
+                  onChange={(from, to) => {
+                    setWatchlistYearFrom(from);
+                    setWatchlistYearTo(to);
+                  }}
+                />
                 <label>
                   Status
                   <select
@@ -833,6 +832,13 @@ function App() {
                     ))}
                   </select>
                 </label>
+                <ChipSelect
+                  label="Genre"
+                  options={genres.map((genre) => ({ value: genre, label: genre }))}
+                  selected={watchlistGenres}
+                  max={MAX_GENRES}
+                  onChange={setWatchlistGenres}
+                />
               </div>
             </section>
 

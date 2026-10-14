@@ -62,9 +62,12 @@ export type MovieCandidate = {
 
 export type RouletteFilters = {
   maxRuntime: number;
-  genre: string;
+  // Empty means "any". A movie matches if it has at least one chosen genre / mood.
+  genres: string[];
   language: string;
-  mood: Mood | "any";
+  moods: Mood[];
+  yearFrom: number;
+  yearTo: number;
   onlyUnwatched: boolean;
 };
 

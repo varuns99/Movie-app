@@ -6,20 +6,25 @@ export type DiscoverFilters = {
   language: string;
   yearFrom: number;
   yearTo: number;
-  genre: string;
+  // Empty means "any"; otherwise a film needs at least one of these.
+  genres: string[];
   maxRuntime: number;
 };
 
 export const CURRENT_YEAR = new Date().getFullYear();
 export const FIRST_YEAR = 1940;
 
+// English, the latest three release years (2024 to 2026 in 2026), any genre, up to 150 minutes.
 export const defaultDiscoverFilters: DiscoverFilters = {
   language: "eng",
-  yearFrom: 1990,
+  yearFrom: CURRENT_YEAR - 2,
   yearTo: CURRENT_YEAR,
-  genre: "any",
+  genres: [],
   maxRuntime: 150,
 };
+
+// Newest first, for the year dropdowns.
+export const ALL_YEARS = Array.from({ length: CURRENT_YEAR - FIRST_YEAR + 1 }, (_, index) => CURRENT_YEAR - index);
 
 export const DISCOVER_LANGUAGES = [
   { code: "any", label: "Any language" },
@@ -97,6 +102,10 @@ export const languageName = (code: string) =>
   DISCOVER_LANGUAGES.find((language) => language.code === code)?.label ?? OTHER_LANGUAGE_NAMES[code] ?? code.toUpperCase();
 const POOL_SIZE = 20;
 const YEAR_SAMPLES = 4;
+// TVDB filters by one year and one genre per request, so a search makes
+// (sample years x chosen genres) requests. Keep that product small.
+const MAX_REQUESTS = 12;
+export const MAX_GENRES = 5;
 
 const normalizeGenre = (genre: string) => {
   const lower = genre.toLowerCase();
@@ -136,7 +145,10 @@ const filterDemoCatalog = (filters: DiscoverFilters) => {
     if (filters.language !== "any" && movie.language && movie.language !== filters.language) return false;
     if (Number.isFinite(year) && (year < low || year > high)) return false;
     if (movie.runtime > filters.maxRuntime) return false;
-    if (filters.genre !== "any" && !movie.genres.some((genre) => normalizeGenre(genre) === normalizeGenre(filters.genre))) {
+    if (
+      filters.genres.length &&
+      !movie.genres.some((genre) => filters.genres.some((wanted) => normalizeGenre(genre) === normalizeGenre(wanted)))
+    ) {
       return false;
     }
     return true;
@@ -151,10 +163,14 @@ export const discoverMovies = async (filters: DiscoverFilters, signal?: AbortSig
   }
 
   const url = new URL("/discover", movieProxyUrl);
-  url.searchParams.set("years", pickYears(filters.yearFrom, filters.yearTo).join(","));
+  const genres = filters.genres.slice(0, MAX_GENRES);
+  const yearCount = Math.min(YEAR_SAMPLES, Math.max(2, Math.floor(MAX_REQUESTS / Math.max(1, genres.length))));
+  url.searchParams.set("years", pickYears(filters.yearFrom, filters.yearTo, yearCount).join(","));
+  url.searchParams.set("yearFrom", String(Math.min(filters.yearFrom, filters.yearTo)));
+  url.searchParams.set("yearTo", String(Math.max(filters.yearFrom, filters.yearTo)));
   url.searchParams.set("maxRuntime", String(filters.maxRuntime));
   if (filters.language !== "any") url.searchParams.set("lang", filters.language);
-  if (filters.genre !== "any") url.searchParams.set("genre", filters.genre);
+  if (genres.length) url.searchParams.set("genre", genres.join(","));
 
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error("Movie search is taking the night off.");

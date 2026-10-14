@@ -328,10 +328,14 @@ const genreIdFor = async (name, env) => {
 };
 
 const MAX_YEARS = 6;
+const MAX_GENRES = 5;
+const MAX_FILTER_REQUESTS = 24;
 const MAX_DISCOVER_RESULTS = 60;
 
-// Browse movies by language, release year(s), genre and runtime. TVDB filters
-// one release year per request, so the client sends a few sample years.
+// Browse movies by language, release year(s), genre(s) and runtime. TVDB filters
+// one release year and one genre per request, so the client sends a few sample
+// years and the worker asks once per (year, genre) pair and merges the answers:
+// a film matches if it has at least one of the chosen genres.
 const discoverMovies = async (params, env) => {
   const years = (params.get("years") || "")
     .split(",")
@@ -342,57 +346,79 @@ const discoverMovies = async (params, env) => {
 
   const lang = params.get("lang") || undefined;
   const maxRuntime = Number(params.get("maxRuntime")) || Infinity;
-  const genreName = params.get("genre") || "";
-  let genreId;
-  if (genreName) {
-    genreId = await genreIdFor(genreName, env);
-    if (genreId === undefined) return [];
+  // TVDB's year filter is loose (asking for 2025 also returns films it lists as
+  // 2024, since a regional release date can fall in 2025), so the chosen range
+  // is enforced on each film's own release year.
+  const yearFrom = Number(params.get("yearFrom")) || -Infinity;
+  const yearTo = Number(params.get("yearTo")) || Infinity;
+  const genreNames = [...new Set((params.get("genre") || "").split(",").map((name) => name.trim()).filter(Boolean))].slice(
+    0,
+    MAX_GENRES,
+  );
+
+  const genres = [];
+  for (const name of genreNames) {
+    const id = await genreIdFor(name, env);
+    if (id !== undefined) genres.push({ name, id });
   }
+  if (genreNames.length && !genres.length) return [];
+
+  const tasks = years
+    .flatMap((year) => (genres.length ? genres.map((genre) => ({ year, genre })) : [{ year, genre: null }]))
+    .slice(0, MAX_FILTER_REQUESTS);
 
   const pages = await Promise.all(
-    years.map((year) =>
+    tasks.map((task) =>
       tvdbFetch("/movies/filter", env, {
-        year: String(year),
+        year: String(task.year),
         lang,
-        genre: genreId === undefined ? undefined : String(genreId),
+        genre: task.genre ? String(task.genre.id) : undefined,
         sort: "score",
         sortType: "desc",
         page: "0",
       })
-        .then((body) => (Array.isArray(body.data) ? body.data : []))
+        .then((body) => (Array.isArray(body.data) ? body.data : []).map((movie) => ({ movie, genre: task.genre?.name })))
         .catch(() => null),
     ),
   );
-  // One bad year should not sink the search, but if every request failed
+  // One bad request should not sink the search, but if every request failed
   // (for example, TVDB rejected the filter) report it instead of "no movies".
   if (pages.every((page) => page === null)) throw new Error("TVDB filter failed");
 
-  const seen = new Set();
-  const found = pages
+  // Merge duplicates, remembering every chosen genre a film turned up under.
+  const merged = new Map();
+  pages
     .flatMap((page) => page || [])
-    .filter((movie) => {
-      if (!movie?.id || !movie.image || seen.has(movie.id)) return false;
-      seen.add(movie.id);
-      return !movie.runtime || movie.runtime <= maxRuntime;
-    })
-    .sort((a, b) => (b.score || 0) - (a.score || 0))
-    .slice(0, MAX_DISCOVER_RESULTS);
+    .forEach(({ movie, genre }) => {
+      if (!movie?.id || !movie.image) return;
+      if (movie.runtime && movie.runtime > maxRuntime) return;
+      const releaseYear = Number(movie.year);
+      if (Number.isFinite(releaseYear) && (releaseYear < yearFrom || releaseYear > yearTo)) return;
+      const entry = merged.get(movie.id) || { movie, genres: new Set() };
+      if (genre) entry.genres.add(genre);
+      merged.set(movie.id, entry);
+    });
 
   // These come straight from TVDB's language filter so the list is quick. The
   // app then asks /verify which of them Wikidata says are in another language.
-  return found
-    .map((movie) => ({
-      source: "tvdb",
-      tvdbId: Number(movie.id),
-      title: movie.name || "Untitled",
-      year: movie.year ? String(movie.year) : "TBA",
-      runtime: movie.runtime || 100,
-      genres: genreName ? [genreName] : [],
-      moods: moodFromGenres(genreName ? [genreName] : []),
-      synopsis: "",
-      posterUrl: artworkUrl(movie.image),
-      language: movie.originalLanguage || lang,
-    }));
+  return [...merged.values()]
+    .sort((a, b) => (b.movie.score || 0) - (a.movie.score || 0))
+    .slice(0, MAX_DISCOVER_RESULTS)
+    .map(({ movie, genres: matched }) => {
+      const names = [...matched].slice(0, 3);
+      return {
+        source: "tvdb",
+        tvdbId: Number(movie.id),
+        title: movie.name || "Untitled",
+        year: movie.year ? String(movie.year) : "TBA",
+        runtime: movie.runtime || 100,
+        genres: names,
+        moods: moodFromGenres(names),
+        synopsis: "",
+        posterUrl: artworkUrl(movie.image),
+        language: movie.originalLanguage || lang,
+      };
+    });
 };
 
 // Which of these TVDB films does Wikidata say are NOT in the wanted language?

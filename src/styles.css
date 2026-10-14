@@ -1014,7 +1014,13 @@ input[type="range"] {
   font-weight: 700;
 }
 
-.modal-heading button {
+.modal-heading-end {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.modal-heading .modal-close {
   width: 44px;
   padding: 0;
   border-color: transparent;
@@ -1431,101 +1437,6 @@ input[type="range"] {
   margin-top: 0.6rem;
 }
 
-/* ---------- Collapsible filters ---------- */
-
-.filters-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0 0.9rem;
-  text-align: left;
-}
-
-.filters-toggle-label {
-  flex: 0 0 auto;
-  font-weight: 600;
-}
-
-.filters-toggle-summary {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 0.85rem;
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chevron {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  color: var(--muted);
-  transition: transform 200ms ease;
-}
-
-.filters-toggle[aria-expanded="true"] .chevron {
-  transform: rotate(180deg);
-}
-
-.collapse {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 220ms ease;
-}
-
-.collapse.open {
-  grid-template-rows: 1fr;
-}
-
-.collapse-inner {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.collapse.open .collapse-inner {
-  overflow: visible;
-}
-
-.collapse.open .filters {
-  padding-top: 1rem;
-}
-
-.discover .roulette-stage {
-  margin-top: 1.25rem;
-}
-
-.winner-card {
-  align-items: start;
-}
-
-.winner-card .best-body {
-  align-content: start;
-  padding-bottom: 0;
-}
-
-.winner-card .winner-actions button {
-  white-space: nowrap;
-}
-
-.winner-card .winner-synopsis {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
-  line-clamp: 5;
-}
-
-@media (min-width: 720px) {
-  .winner-card .winner-synopsis {
-    -webkit-line-clamp: 8;
-    line-clamp: 8;
-  }
-}
-
 /* ---------- Splash screen ---------- */
 
 .splash {
@@ -1581,4 +1492,171 @@ input[type="range"] {
     transform: scaleY(0.12);
     fill: var(--accent);
   }
+}
+
+/* ---------- Multi-select chips and the year range ---------- */
+
+.filter-group {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.filter-group-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.filter-group-hint {
+  font-weight: 400;
+}
+
+.filter-group-heading .link-button {
+  min-height: 32px;
+  margin-left: auto;
+  padding: 0 0.25rem;
+}
+
+.chip-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip-toggle {
+  min-height: 40px;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.chip-toggle.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.year-range {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.year-range-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.year-range-to {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+@media (min-width: 720px) {
+  .filters .year-range {
+    grid-column: span 2;
+  }
+}
+
+/* ---------- Pick card tweaks and roulette spacing ---------- */
+
+.roulette-panel .roulette-stage {
+  margin-top: 1.25rem;
+}
+
+.winner-card {
+  align-items: start;
+}
+
+.winner-card .best-body {
+  align-content: start;
+  padding-bottom: 0;
+}
+
+.winner-card .winner-actions button {
+  white-space: nowrap;
+}
+
+.winner-card .winner-synopsis {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+}
+
+@media (min-width: 720px) {
+  .winner-card .winner-synopsis {
+    -webkit-line-clamp: 8;
+    line-clamp: 8;
+  }
+}
+
+/* ---------- Filters button, summary and window ---------- */
+
+.filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+}
+
+.filters-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1.1rem;
+}
+
+.filters-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.filter-summary {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.sheet-body {
+  padding: 1rem;
+}
+
+.sheet-body .filters {
+  gap: 1.1rem 0.9rem;
+}
+
+.sheet-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  padding-bottom: calc(0.9rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.sheet-footer button {
+  padding: 0 1.4rem;
+}
+
+.modal-heading .link-button {
+  min-height: 44px;
 }

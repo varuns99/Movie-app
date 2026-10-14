@@ -1,25 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  CURRENT_YEAR,
+  ALL_YEARS,
   DISCOVER_GENRES,
   DISCOVER_LANGUAGES,
-  FIRST_YEAR,
   MAX_DISCOVER_RUNTIME,
+  MAX_GENRES,
   defaultDiscoverFilters,
   discoverMovies,
   findLanguageMismatches,
   loadMovieDetails,
 } from "./discover";
 import type { DiscoverFilters } from "./discover";
-import { CollapsibleFilters } from "./CollapsibleFilters";
+import { ChipSelect } from "./ChipSelect";
 import { EmptyState } from "./EmptyState";
+import { FiltersSheet } from "./FiltersSheet";
 import { LockedFeature } from "./LockedFeature";
+import { listSummary, yearSummary } from "./filterText";
 import { PickCard } from "./PickCard";
 import { RouletteStrip } from "./RouletteStrip";
+import { YearRange } from "./YearRange";
 import { useRoulette } from "./useRoulette";
 import type { MovieCandidate } from "./types";
-
-const YEARS = Array.from({ length: CURRENT_YEAR - FIRST_YEAR + 1 }, (_, index) => CURRENT_YEAR - index);
 
 type Props = {
   onSignIn?: () => void;
@@ -37,7 +38,6 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
   const [attempt, setAttempt] = useState(0);
   const [verifying, setVerifying] = useState(false);
   const [details, setDetails] = useState<MovieCandidate | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -87,21 +87,13 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
     };
   }, [selected]);
 
-  const update = (patch: Partial<DiscoverFilters>) => setFilters((current) => ({ ...current, ...patch }));
-  const setYearFrom = (year: number) => update({ yearFrom: year, yearTo: Math.max(year, filters.yearTo) });
-  const setYearTo = (year: number) => update({ yearTo: year, yearFrom: Math.min(year, filters.yearFrom) });
-  const busy = roulette.spinning;
   const languageLabel = DISCOVER_LANGUAGES.find((language) => language.code === filters.language)?.label ?? "Any language";
   const filterSummary = [
     languageLabel,
-    filters.yearFrom === filters.yearTo ? String(filters.yearFrom) : `${filters.yearFrom} to ${filters.yearTo}`,
-    filters.genre === "any" ? "Any genre" : filters.genre,
+    yearSummary(filters.yearFrom, filters.yearTo, ALL_YEARS[ALL_YEARS.length - 1], ALL_YEARS[0]),
+    listSummary(filters.genres, "Any genre"),
     filters.maxRuntime >= MAX_DISCOVER_RUNTIME ? "Any length" : `Up to ${filters.maxRuntime} min`,
   ].join(" · ");
-  const spin = () => {
-    setFiltersOpen(false);
-    roulette.spin();
-  };
 
   return (
     <section className="panel roulette-panel discover">
@@ -110,11 +102,18 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
         <span>{loadState === "ready" ? `${items.length} to spin` : ""}</span>
       </div>
 
-      <CollapsibleFilters id="discover-filters" summary={filterSummary} open={filtersOpen} onToggle={() => setFiltersOpen((open) => !open)}>
+      <FiltersSheet
+        applied={filters}
+        defaults={defaultDiscoverFilters}
+        onApply={setFilters}
+        summary={filterSummary}
+        disabled={roulette.spinning}
+      >
+        {(draft, change, close) => (
           <div className="filters">
             <label>
               Language
-              <select disabled={busy} value={filters.language} onChange={(event) => update({ language: event.target.value })}>
+              <select value={draft.language} onChange={(event) => change({ language: event.target.value })}>
                 {DISCOVER_LANGUAGES.map((language) => (
                   <option key={language.code} value={language.code}>
                     {language.label}
@@ -122,37 +121,30 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
                 ))}
               </select>
             </label>
-            <label>
-              Released from
-              <select disabled={busy} value={filters.yearFrom} onChange={(event) => setYearFrom(Number(event.target.value))}>
-                {YEARS.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Released to
-              <select disabled={busy} value={filters.yearTo} onChange={(event) => setYearTo(Number(event.target.value))}>
-                {YEARS.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Genre
-              <select disabled={busy} value={filters.genre} onChange={(event) => update({ genre: event.target.value })}>
-                <option value="any">Any genre</option>
-                {DISCOVER_GENRES.map((genre) => (
-                  <option key={genre} value={genre}>
-                    {genre}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="toggle-row locked-toggle-row">
+              <LockedFeature
+                className="locked-toggle"
+                title="Sign in to filter by unwatched"
+                body="This uses your shared watchlist, so you only spin movies you haven't seen yet."
+                onSignIn={
+                  onSignIn
+                    ? () => {
+                        close();
+                        onSignIn();
+                      }
+                    : undefined
+                }
+              >
+                <span className="fake-check" aria-hidden="true" />
+                Only unwatched
+              </LockedFeature>
+            </div>
+            <YearRange
+              from={draft.yearFrom}
+              to={draft.yearTo}
+              years={ALL_YEARS}
+              onChange={(yearFrom, yearTo) => change({ yearFrom, yearTo })}
+            />
             <label>
               Max runtime
               <input
@@ -160,25 +152,21 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
                 min="80"
                 max={MAX_DISCOVER_RUNTIME}
                 step="5"
-                value={filters.maxRuntime}
-                disabled={busy}
-                onChange={(event) => update({ maxRuntime: Number(event.target.value) })}
+                value={draft.maxRuntime}
+                onChange={(event) => change({ maxRuntime: Number(event.target.value) })}
               />
-              <strong>{filters.maxRuntime >= MAX_DISCOVER_RUNTIME ? "Any" : `${filters.maxRuntime} min`}</strong>
+              <strong>{draft.maxRuntime >= MAX_DISCOVER_RUNTIME ? "Any" : `${draft.maxRuntime} min`}</strong>
             </label>
-            <div className="toggle-row locked-toggle-row">
-              <LockedFeature
-                className="locked-toggle"
-                title="Sign in to filter by unwatched"
-                body="This uses your shared watchlist, so you only spin movies you haven't seen yet."
-                onSignIn={onSignIn}
-              >
-                <span className="fake-check" aria-hidden="true" />
-                Only unwatched
-              </LockedFeature>
-            </div>
+            <ChipSelect
+              label="Genre"
+              options={DISCOVER_GENRES.map((genre) => ({ value: genre, label: genre }))}
+              selected={draft.genres}
+              max={MAX_GENRES}
+              onChange={(genres) => change({ genres })}
+            />
           </div>
-      </CollapsibleFilters>
+        )}
+      </FiltersSheet>
 
       {details && (
         <PickCard
@@ -233,7 +221,7 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
               spinning={roulette.spinning}
               tileRefs={roulette.tileRefs}
             />
-            <button className="spin-button" disabled={roulette.spinning || verifying} onClick={spin}>
+            <button className="spin-button" disabled={roulette.spinning || verifying} onClick={roulette.spin}>
               {roulette.spinning ? "Choosing..." : verifying ? "Checking languages..." : "Spin roulette"}
             </button>
             {sample && <p className="discover-note">Showing sample picks. Live movie search isn&apos;t set up here.</p>}
