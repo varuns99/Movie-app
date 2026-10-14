@@ -15,6 +15,7 @@ import { CloudRoomModal } from "./CloudRoomModal";
 import { useCloudMovies, useCloudRoom } from "./cloudData";
 import { hasSupabase } from "./supabaseClient";
 import { Modal } from "./Modal";
+import { APP_NAME } from "./brand";
 import type { AppState, Member, MemberId, Mood, Movie, MovieCandidate, RouletteFilters, TasteProfile } from "./types";
 
 const moodLabels: Record<Mood, string> = {
@@ -473,9 +474,16 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">Movie Night Roulette</p>
-          <h1>{user ? (cloud.room?.name ?? "Set up your room") : state.room.name}</h1>
+        <div className="brand">
+          <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+            <rect x="11" y="16" width="20" height="30" rx="7" fill="var(--accent)" />
+            <rect x="33" y="16" width="20" height="30" rx="7" fill="none" stroke="var(--accent)" strokeWidth="3.5" />
+            <rect x="11" y="49" width="42" height="4" rx="2" fill="var(--accent)" opacity="0.45" />
+          </svg>
+          <div>
+            <h1 className="wordmark">{APP_NAME}</h1>
+            <p className="room-name">{user ? (cloud.room?.name ?? "Set up your room") : state.room.name}</p>
+          </div>
         </div>
         <div className="topbar-actions">
           {hasSupabase && (
@@ -540,13 +548,13 @@ function App() {
                 {bestTonight ? (
                   <article className="best-card">
                     <img src={bestTonight.posterUrl} alt="" />
-                    <div>
-                      <span className="score">{matchScore(bestTonight, profile)}% match</span>
+                    <div className="best-body">
                       <h2>Best for us tonight</h2>
                       <h3>{bestTonight.title}</h3>
                       <p>
-                        {bestTonight.runtime} min • {bestTonight.genres.slice(0, 2).join(" / ")}
+                        {bestTonight.runtime} min · {bestTonight.genres.slice(0, 2).join(", ")}
                       </p>
+                      <span className="score">{matchScore(bestTonight, profile)}% match</span>
                       <button className="primary-button" onClick={spinRoulette}>
                         Spin with this vibe
                       </button>
@@ -566,10 +574,7 @@ function App() {
 
               <section className="panel roulette-panel">
                 <div className="section-heading">
-                  <div>
-                    <p className="eyebrow">Roulette</p>
-                    <h2>Let the room choose</h2>
-                  </div>
+                  <h2>Let the room choose</h2>
                   <span>{rouletteMovies.length} eligible</span>
                 </div>
 
@@ -715,7 +720,7 @@ function App() {
 
             <section className="panel filters-panel">
               <div className="section-heading">
-                <p className="eyebrow">Filter &amp; sort</p>
+                <h2>Filter and sort</h2>
                 {watchlistFiltersActive && (
                   <button type="button" className="link-button" onClick={resetWatchlistFilters}>
                     Reset filters
@@ -1048,31 +1053,16 @@ function MovieCard({ movie, score, members, onTrailer, onRate, onRemove, onToggl
       </div>
       <div className="movie-content">
         <div className="movie-title-row">
-          <div>
-            <h3>{movie.title}</h3>
-            <p>
-              {movie.year} • {movie.runtime} min
-            </p>
-          </div>
-          <button className={movie.status === "watched" ? "status watched" : "status"} onClick={onToggleWatched}>
-            {movie.status === "watched" ? "Watched" : "Unwatched"}
-          </button>
-        </div>
-        <div className="chip-row">
-          {movie.genres.map((genre) => (
-            <span key={genre}>{genre}</span>
-          ))}
-        </div>
-        <p className="synopsis">{movie.synopsis}</p>
-        <div className="meta-row">
-          <span>Added by {memberNameOf(members, movie.addedBy)}</span>
-          <span>{movie.moods.map((mood) => moodLabels[mood]).join(", ")}</span>
+          <h3>{movie.title}</h3>
+          <p>
+            {movie.year} · {movie.runtime} min
+          </p>
         </div>
         {movie.status === "watched" && (
           <div className="rating-summary">
             {members.map((member) => (
               <span key={member.id}>
-                {member.displayName}: {movie.ratings[member.id]?.score ?? "-"}
+                {member.displayName} {movie.ratings[member.id]?.score ?? "-"}
               </span>
             ))}
             <strong className={pending ? "pending" : undefined}>
@@ -1083,14 +1073,34 @@ function MovieCard({ movie, score, members, onTrailer, onRate, onRemove, onToggl
         )}
         {pending && <small className="rating-pending">* Waiting for {progress.waitingFor.join(" and ")} to rate</small>}
         <div className="card-actions">
-          <button disabled={!movie.trailerUrl} onClick={onTrailer}>
-            Trailer
-          </button>
           <button onClick={onRate}>Rate</button>
-          <button className="remove-button" onClick={onRemove}>
-            Remove
+          <button className={movie.status === "watched" ? "status watched" : "status"} onClick={onToggleWatched}>
+            {movie.status === "watched" ? "Watched" : "Seen it"}
           </button>
         </div>
+        <details className="card-details">
+          <summary>Details</summary>
+          <div className="card-details-body">
+            <div className="chip-row">
+              {movie.genres.map((genre) => (
+                <span key={genre}>{genre}</span>
+              ))}
+            </div>
+            <p className="synopsis">{movie.synopsis}</p>
+            <div className="meta-row">
+              <span>Added by {memberNameOf(members, movie.addedBy)}</span>
+              <span>{movie.moods.map((mood) => moodLabels[mood]).join(", ")}</span>
+            </div>
+            <div className="card-actions">
+              <button disabled={!movie.trailerUrl} onClick={onTrailer}>
+                Trailer
+              </button>
+              <button className="remove-button" onClick={onRemove}>
+                Remove
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
     </article>
   );

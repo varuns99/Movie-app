@@ -1,4 +1,4 @@
-# Movie Night Roulette
+# Two Seats (formerly Movie Night Roulette)
 
 A mobile-first shared watchlist for two people who want movie night to start before the snacks are gone.
 
