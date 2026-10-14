@@ -1,6 +1,5 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
-import { createId, createRoom, loadState, resetState, saveState } from "./storage";
 import { getCachedMovieSuggestions, hasMovieProxy, searchMovies } from "./movieSearch";
 import {
   displayNameFor,
@@ -15,8 +14,13 @@ import { CloudRoomModal } from "./CloudRoomModal";
 import { useCloudMovies, useCloudRoom } from "./cloudData";
 import { hasSupabase } from "./supabaseClient";
 import { Modal } from "./Modal";
-import { APP_NAME } from "./brand";
-import type { AppState, Member, MemberId, Mood, Movie, MovieCandidate, RouletteFilters, TasteProfile } from "./types";
+import { APP_NAME, APP_TAGLINE } from "./brand";
+import { DiscoverView } from "./DiscoverView";
+import { EmptyState } from "./EmptyState";
+import { LockedFeature } from "./LockedFeature";
+import { RouletteStrip } from "./RouletteStrip";
+import { useRoulette } from "./useRoulette";
+import type { Member, MemberId, Mood, Movie, MovieCandidate, RouletteFilters, TasteProfile } from "./types";
 
 const moodLabels: Record<Mood, string> = {
   cozy: "Cozy",
@@ -55,19 +59,6 @@ const ratingLine = (movie: Movie, members: Member[]) => {
   const avg = averageRating(movie);
   if (!avg) return scores;
   return `${scores} • Avg ${avg.toFixed(1)}${ratingProgress(movie, members).complete ? "" : "*"}`;
-};
-
-const movieFromCandidate = (candidate: MovieCandidate, addedBy: MemberId): Movie => {
-  const movie = { ...candidate };
-  delete movie.searchTerms;
-  return {
-    ...movie,
-    id: createId(),
-    addedBy,
-    addedAt: todayIso(),
-    status: "unwatched",
-    ratings: {},
-  };
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -193,13 +184,18 @@ type View = "tonight" | "watchlist" | "history";
 const views: View[] = ["tonight", "watchlist", "history"];
 const viewLabels: Record<View, string> = { tonight: "Tonight", watchlist: "Watchlist", history: "History" };
 
+const lockedViewBodies: Record<View, string> = {
+  tonight: "",
+  watchlist: "Save movies, rate them together and see your shared list on any device.",
+  history: "Keep a record of what you've watched and how you both rated it.",
+};
+
 const viewFromHash = (): View => {
   const hash = window.location.hash.replace("#", "");
   return (views as string[]).includes(hash) ? (hash as View) : "tonight";
 };
 
 function App() {
-  const [state, setState] = useState<AppState>(() => loadState());
   const [view, setView] = useState<View>(() => viewFromHash());
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MovieCandidate[]>([]);
@@ -208,29 +204,22 @@ function App() {
   const [manualOpen, setManualOpen] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const { user, passwordRecovery, clearPasswordRecovery } = useAuth();
+  const { user, loading: authLoading, passwordRecovery, clearPasswordRecovery } = useAuth();
   const cloud = useCloudRoom(user?.id);
   const cloudActive = Boolean(user && cloud.room);
   const cloudMovies = useCloudMovies(user && cloud.room ? cloud.room.id : null);
   const [actionError, setActionError] = useState("");
   const showSetup = Boolean(user) && !cloud.room;
-  // Signed in with a room: the shared cloud watchlist. Otherwise: the local demo.
-  const movies = cloudActive ? cloudMovies.movies : state.movies;
+  const movies = cloudMovies.movies;
   const members = useMemo<Member[]>(
-    () =>
-      cloudActive
-        ? cloud.members.map((member) => ({ id: member.userId, displayName: member.displayName }))
-        : [
-            { id: "partnerA", displayName: state.room.partnerA },
-            { id: "partnerB", displayName: state.room.partnerB },
-          ],
-    [cloudActive, cloud.members, state.room.partnerA, state.room.partnerB],
+    () => cloud.members.map((member) => ({ id: member.userId, displayName: member.displayName })),
+    [cloud.members],
   );
 
   useEffect(() => {
     if (passwordRecovery) setAccountOpen(true);
   }, [passwordRecovery]);
-  const [trailerMovie, setTrailerMovie] = useState<Movie | null>(null);
+  const [trailerMovie, setTrailerMovie] = useState<{ title: string; trailerUrl?: string } | null>(null);
   const [ratingMovie, setRatingMovie] = useState<Movie | null>(null);
   const [filters, setFilters] = useState<RouletteFilters>({
     maxRuntime: 150,
@@ -238,25 +227,21 @@ function App() {
     mood: "any",
     onlyUnwatched: true,
   });
-  const [rouletteIndex, setRouletteIndex] = useState(0);
-  const [spinning, setSpinning] = useState(false);
-  const [selectedMovieId, setSelectedMovieId] = useState<string | null>(null);
-  const rouletteTileRefs = useRef(new Map<string, HTMLDivElement>());
   const [watchlistGenre, setWatchlistGenre] = useState("any");
   const [watchlistYear, setWatchlistYear] = useState("any");
   const [watchlistStatus, setWatchlistStatus] = useState<WatchStatusFilter>("any");
   const [watchlistMaxRuntime, setWatchlistMaxRuntime] = useState(DEFAULT_WATCHLIST_MAX_RUNTIME);
   const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>("added-desc");
 
-  useEffect(() => {
-    saveState(state);
-  }, [state]);
+  // Signed-out visitors only get Tonight. Wait for the session check first so a
+  // signed-in person opening #watchlist is not bounced to Tonight.
+  const activeView: View = user || authLoading ? view : "tonight";
 
   useEffect(() => {
-    if (window.location.hash.replace("#", "") !== view) {
-      window.location.hash = view;
+    if (window.location.hash.replace("#", "") !== activeView) {
+      window.location.hash = activeView;
     }
-  }, [view]);
+  }, [activeView]);
 
   useEffect(() => {
     const onHashChange = () => setView(viewFromHash());
@@ -359,12 +344,8 @@ function App() {
     () => filterMovies(movies, filters).sort((a, b) => matchScore(b, profile) - matchScore(a, profile)),
     [movies, filters, profile],
   );
-  const selectedMovie = selectedMovieId ? movies.find((movie) => movie.id === selectedMovieId) : undefined;
-  const activeRouletteIndex = useMemo(() => {
-    if (spinning || !selectedMovieId) return rouletteIndex;
-    const selectedIndex = rouletteMovies.findIndex((movie) => movie.id === selectedMovieId);
-    return selectedIndex >= 0 ? selectedIndex : rouletteIndex;
-  }, [rouletteIndex, rouletteMovies, selectedMovieId, spinning]);
+  const roulette = useRoulette(rouletteMovies);
+  const selectedMovie = roulette.selectedId ? movies.find((movie) => movie.id === roulette.selectedId) : undefined;
   const watchedMovies = useMemo(
     () =>
       movies
@@ -374,37 +355,18 @@ function App() {
   );
   const unwatchedCount = movies.length - watchedMovies.length;
 
-  useEffect(() => {
-    setRouletteIndex((current) => (rouletteMovies.length ? current % rouletteMovies.length : 0));
-    setSelectedMovieId((current) => (current && rouletteMovies.some((movie) => movie.id === current) ? current : null));
-  }, [rouletteMovies]);
-
-  useEffect(() => {
-    const activeMovie = rouletteMovies[activeRouletteIndex];
-    const activeTile = activeMovie ? rouletteTileRefs.current.get(activeMovie.id) : undefined;
-    activeTile?.scrollIntoView({ block: "nearest", inline: "center", behavior: spinning ? "auto" : "smooth" });
-  }, [activeRouletteIndex, rouletteMovies, spinning]);
-
   const reportFailure = (result: { ok: true } | { ok: false; message: string }) => {
     if (!result.ok) setActionError(result.message);
   };
 
   const updateMovie = (movieId: string, updater: (movie: Movie) => Movie) => {
-    if (cloudActive) {
-      const current = movies.find((movie) => movie.id === movieId);
-      if (!current) return;
-      const next = updater(current);
-      if (next.status !== current.status || next.watchedAt !== current.watchedAt) {
-        setActionError("");
-        cloudMovies.setStatus(movieId, next.status, next.watchedAt).then(reportFailure);
-      }
-      return;
+    const current = movies.find((movie) => movie.id === movieId);
+    if (!current) return;
+    const next = updater(current);
+    if (next.status !== current.status || next.watchedAt !== current.watchedAt) {
+      setActionError("");
+      cloudMovies.setStatus(movieId, next.status, next.watchedAt).then(reportFailure);
     }
-
-    setState((current) => ({
-      ...current,
-      movies: current.movies.map((movie) => (movie.id === movieId ? updater(movie) : movie)),
-    }));
   };
 
   const addMovie = (candidate: MovieCandidate) => {
@@ -413,22 +375,16 @@ function App() {
       setSearchError("That one is already on your couch list.");
       return;
     }
+    if (!user) return;
 
-    if (cloudActive && user) {
-      setActionError("");
-      cloudMovies.add(candidate, user.id).then((result) => {
-        reportFailure(result);
-        if (result.ok) {
-          setQuery("");
-          setSearchResults([]);
-        }
-      });
-      return;
-    }
-
-    setState((current) => ({ ...current, movies: [movieFromCandidate(candidate, "partnerA"), ...current.movies] }));
-    setQuery("");
-    setSearchResults([]);
+    setActionError("");
+    cloudMovies.add(candidate, user.id).then((result) => {
+      reportFailure(result);
+      if (result.ok) {
+        setQuery("");
+        setSearchResults([]);
+      }
+    });
   };
 
   const removeMovie = (movieId: string) => {
@@ -437,38 +393,8 @@ function App() {
     if (!window.confirm(`Remove "${movie.title}" from the watchlist? This also deletes its ratings and history.`)) {
       return;
     }
-    if (cloudActive) {
-      setActionError("");
-      cloudMovies.remove(movieId).then(reportFailure);
-      return;
-    }
-    setState((current) => ({ ...current, movies: current.movies.filter((item) => item.id !== movieId) }));
-  };
-
-  const spinRoulette = () => {
-    if (!rouletteMovies.length || spinning) return;
-
-    const weighted = rouletteMovies.flatMap((movie, index) => Array(Math.max(1, rouletteMovies.length - index)).fill(movie));
-    const winner = weighted[Math.floor(Math.random() * weighted.length)] as Movie;
-    const winnerIndex = rouletteMovies.findIndex((movie) => movie.id === winner.id);
-    const loops = 6 + Math.floor(Math.random() * 3);
-    const totalSteps = loops * rouletteMovies.length + winnerIndex;
-
-    setSpinning(true);
-    setSelectedMovieId(null);
-
-    const tick = (step: number) => {
-      setRouletteIndex(step % rouletteMovies.length);
-      if (step >= totalSteps) {
-        setRouletteIndex(winnerIndex);
-        setSelectedMovieId(winner.id);
-        setSpinning(false);
-        return;
-      }
-      window.setTimeout(() => tick(step + 1), 72 + step * 8);
-    };
-
-    tick(0);
+    setActionError("");
+    cloudMovies.remove(movieId).then(reportFailure);
   };
 
   return (
@@ -482,34 +408,53 @@ function App() {
           </svg>
           <div>
             <h1 className="wordmark">{APP_NAME}</h1>
-            <p className="room-name">{user ? (cloud.room?.name ?? "Set up your room") : state.room.name}</p>
+            <p className="room-name">{user ? (cloud.room?.name ?? "Set up your room") : APP_TAGLINE}</p>
           </div>
         </div>
         <div className="topbar-actions">
           {hasSupabase && (
-            <button className="ghost-button" onClick={() => setAccountOpen(true)}>
+            <button className={user ? "ghost-button" : "signin-button"} onClick={() => setAccountOpen(true)}>
               {user ? "Account" : "Sign in"}
             </button>
           )}
-          <button className="ghost-button" onClick={() => setRoomOpen(true)}>
-            Room
-          </button>
+          {user && (
+            <button className="ghost-button" onClick={() => setRoomOpen(true)}>
+              Room
+            </button>
+          )}
         </div>
       </header>
 
       <nav className="view-tabs" aria-label="Sections">
-        {views.map((item) => (
-          <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>
-            {viewLabels[item]}
-          </button>
-        ))}
+        {views.map((item) =>
+          user || authLoading || item === "tonight" ? (
+            <button key={item} className={activeView === item ? "active" : ""} onClick={() => setView(item)}>
+              {viewLabels[item]}
+            </button>
+          ) : (
+            <LockedFeature
+              key={item}
+              title={`Sign in to open ${viewLabels[item]}`}
+              body={lockedViewBodies[item]}
+              onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
+            >
+              {viewLabels[item]}
+            </LockedFeature>
+          ),
+        )}
       </nav>
 
-      <main className="view" aria-label={`${viewLabels[view]} view`}>
+      <main className="view" aria-label={`${viewLabels[activeView]} view`}>
         {actionError && (
           <p className="auth-message error" role="alert">
             {actionError}
           </p>
+        )}
+        {!user && !authLoading && (
+          <DiscoverView
+            onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
+            onTrailer={setTrailerMovie}
+          />
         )}
         {showSetup && (
           <section className="panel setup-panel">
@@ -526,7 +471,7 @@ function App() {
           </section>
         )}
         {cloudActive && cloudMovies.error && <p className="auth-message error">{cloudMovies.error}</p>}
-        {!showSetup && view === "tonight" && (
+        {user && !showSetup && activeView === "tonight" && (
           <>
             <AddMovieBar
               movies={movies}
@@ -555,7 +500,7 @@ function App() {
                         {bestTonight.runtime} min · {bestTonight.genres.slice(0, 2).join(", ")}
                       </p>
                       <span className="score">{matchScore(bestTonight, profile)}% match</span>
-                      <button className="primary-button" onClick={spinRoulette}>
+                      <button className="primary-button" onClick={roulette.spin}>
                         Spin with this vibe
                       </button>
                     </div>
@@ -587,14 +532,14 @@ function App() {
                       max="190"
                       step="5"
                       value={filters.maxRuntime}
-                      disabled={spinning}
+                      disabled={roulette.spinning}
                       onChange={(event) => setFilters({ ...filters, maxRuntime: Number(event.target.value) })}
                     />
                     <strong>{filters.maxRuntime} min</strong>
                   </label>
                   <label>
                     Genre
-                    <select disabled={spinning} value={filters.genre} onChange={(event) => setFilters({ ...filters, genre: event.target.value })}>
+                    <select disabled={roulette.spinning} value={filters.genre} onChange={(event) => setFilters({ ...filters, genre: event.target.value })}>
                       <option value="any">Any genre</option>
                       {genres.map((genre) => (
                         <option key={genre} value={genre}>
@@ -606,7 +551,7 @@ function App() {
                   <label>
                     Mood
                     <select
-                      disabled={spinning}
+                      disabled={roulette.spinning}
                       value={filters.mood}
                       onChange={(event) => setFilters({ ...filters, mood: event.target.value as Mood | "any" })}
                     >
@@ -622,7 +567,7 @@ function App() {
                     <input
                       type="checkbox"
                       checked={filters.onlyUnwatched}
-                      disabled={spinning}
+                      disabled={roulette.spinning}
                       onChange={(event) => setFilters({ ...filters, onlyUnwatched: event.target.checked })}
                     />
                     Only unwatched
@@ -632,26 +577,14 @@ function App() {
                 <div className="roulette-stage" aria-live="polite">
                   {rouletteMovies.length ? (
                     <>
-                      <div className={spinning ? "roulette-strip spinning" : "roulette-strip"}>
-                        {rouletteMovies.map((movie, index) => (
-                          <div
-                            key={movie.id}
-                            ref={(node) => {
-                              if (node) {
-                                rouletteTileRefs.current.set(movie.id, node);
-                              } else {
-                                rouletteTileRefs.current.delete(movie.id);
-                              }
-                            }}
-                            className={index === activeRouletteIndex ? "roulette-tile active" : "roulette-tile"}
-                          >
-                            <img src={movie.posterUrl} alt="" />
-                            <span>{movie.title}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <button className="spin-button" disabled={spinning} onClick={spinRoulette}>
-                        {spinning ? "Choosing..." : "Spin roulette"}
+                      <RouletteStrip
+                        items={rouletteMovies}
+                        activeIndex={roulette.activeIndex}
+                        spinning={roulette.spinning}
+                        tileRefs={roulette.tileRefs}
+                      />
+                      <button className="spin-button" disabled={roulette.spinning} onClick={roulette.spin}>
+                        {roulette.spinning ? "Choosing..." : "Spin roulette"}
                       </button>
                     </>
                   ) : (
@@ -687,7 +620,7 @@ function App() {
           </>
         )}
 
-        {!showSetup && view === "watchlist" && (
+        {user && !showSetup && activeView === "watchlist" && (
           <>
             <AddMovieBar
               movies={movies}
@@ -836,7 +769,7 @@ function App() {
           </>
         )}
 
-        {!showSetup && view === "history" && (
+        {user && !showSetup && activeView === "history" && (
           <section className="panel history-panel">
             <div className="section-heading">
               <h2>History</h2>
@@ -901,48 +834,23 @@ function App() {
           onClose={() => setRoomOpen(false)}
         />
       )}
-      {roomOpen && !user && (
-        <RoomModal
-          state={state}
-          onClose={() => setRoomOpen(false)}
-          onSave={(room, keepMovies) => {
-            setState((current) => ({ room, movies: keepMovies ? current.movies : [] }));
-            setRoomOpen(false);
-          }}
-          onReset={() => {
-            setState(resetState());
-            setRoomOpen(false);
-          }}
-        />
-      )}
       {trailerMovie && <TrailerModal movie={trailerMovie} onClose={() => setTrailerMovie(null)} />}
       {ratingMovie && (
         <RatingModal
           members={members}
-          currentMemberId={cloudActive ? user?.id : undefined}
+          currentMemberId={user?.id}
           movie={movies.find((movie) => movie.id === ratingMovie.id) ?? ratingMovie}
           onClose={() => setRatingMovie(null)}
-          onSave={(movieId, partner, score, note) => {
-            if (cloudActive && user) {
-              const existing = movies.find((movie) => movie.id === movieId);
-              setActionError("");
-              cloudMovies.saveRating(movieId, user.id, score, note).then(async (result) => {
-                reportFailure(result);
-                if (result.ok && existing && existing.status !== "watched") {
-                  reportFailure(await cloudMovies.setStatus(movieId, "watched", existing.watchedAt ?? todayIso()));
-                }
-              });
-              return;
-            }
-            updateMovie(movieId, (movie) => ({
-              ...movie,
-              status: "watched",
-              watchedAt: movie.watchedAt ?? todayIso(),
-              ratings: {
-                ...movie.ratings,
-                [partner]: { score, note, ratedAt: todayIso() },
-              },
-            }));
+          onSave={(movieId, _partner, score, note) => {
+            if (!user) return;
+            const existing = movies.find((movie) => movie.id === movieId);
+            setActionError("");
+            cloudMovies.saveRating(movieId, user.id, score, note).then(async (result) => {
+              reportFailure(result);
+              if (result.ok && existing && existing.status !== "watched") {
+                reportFailure(await cloudMovies.setStatus(movieId, "watched", existing.watchedAt ?? todayIso()));
+              }
+            });
           }}
         />
       )}
@@ -1193,75 +1101,6 @@ function ManualMovieModal({ onClose, onAdd }: { onClose: () => void; onAdd: (mov
   );
 }
 
-function RoomModal({
-  state,
-  onClose,
-  onSave,
-  onReset,
-}: {
-  state: AppState;
-  onClose: () => void;
-  onSave: (room: AppState["room"], keepMovies: boolean) => void;
-  onReset: () => void;
-}) {
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const keepMovies = form.get("keepMovies") === "on";
-    if (!keepMovies && state.movies.length && !window.confirm("This clears your whole watchlist and history. Continue?")) {
-      return;
-    }
-    onSave(
-      createRoom(
-        String(form.get("roomName") || state.room.name),
-        String(form.get("partnerA") || state.room.partnerA),
-        String(form.get("partnerB") || state.room.partnerB),
-      ),
-      keepMovies,
-    );
-  };
-
-  const handleReset = () => {
-    if (window.confirm("This restores the demo room and erases your current watchlist and history. Continue?")) {
-      onReset();
-    }
-  };
-
-  return (
-    <Modal title="Couple room" onClose={onClose}>
-      <form className="modal-form" onSubmit={submit}>
-        <label>
-          Room name
-          <input name="roomName" defaultValue={state.room.name} />
-        </label>
-        <div className="form-split">
-          <label>
-            Partner one
-            <input name="partnerA" defaultValue={state.room.partnerA} />
-          </label>
-          <label>
-            Partner two
-            <input name="partnerB" defaultValue={state.room.partnerB} />
-          </label>
-        </div>
-        <label className="toggle-row">
-          <input name="keepMovies" type="checkbox" defaultChecked />
-          Keep current watchlist
-        </label>
-        <p className="room-code">Local room code: {state.room.id.slice(0, 8).toUpperCase()}</p>
-        <div className="modal-actions">
-          <button type="button" onClick={handleReset}>
-            Restore demo
-          </button>
-          <button className="primary-button" type="submit">
-            Save room
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
 const RATING_MAX = 10;
 
 function ScorePicker({ value, onChange, label }: { value: number | null; onChange: (score: number) => void; label: string }) {
@@ -1296,7 +1135,7 @@ function RatingModal({
   onClose: () => void;
   onSave: (movieId: string, partner: MemberId, score: number, note: string) => void;
 }) {
-  // Signed in: you can only rate for yourself. Signed-out demo: both partners.
+  // You can only rate for yourself; everyone else's rating is read-only.
   const editable = (member: Member) => !currentMemberId || member.id === currentMemberId;
   const editableMembers = members.filter(editable);
 
@@ -1378,7 +1217,7 @@ function RatingModal({
   );
 }
 
-function TrailerModal({ movie, onClose }: { movie: Movie; onClose: () => void }) {
+function TrailerModal({ movie, onClose }: { movie: { title: string; trailerUrl?: string }; onClose: () => void }) {
   return (
     <Modal title={`${movie.title} trailer`} onClose={onClose} wide>
       {movie.trailerUrl ? (
@@ -1569,15 +1408,6 @@ function AccountModal({
         )}
       </form>
     </Modal>
-  );
-}
-
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="empty-state">
-      <h3>{title}</h3>
-      <p>{body}</p>
-    </div>
   );
 }
 

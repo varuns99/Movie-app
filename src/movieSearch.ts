@@ -1,11 +1,12 @@
 import type { MovieCandidate } from "./types";
 
 const proxyUrl = import.meta.env.VITE_MOVIE_PROXY_URL as string | undefined;
-const placeholderPosterUrl = `${import.meta.env.BASE_URL}poster-placeholder.svg`;
+export const placeholderPosterUrl = `${import.meta.env.BASE_URL}poster-placeholder.svg`;
 const suggestionCacheKey = "movie-night-roulette-search-suggestions-v1";
 const maxCachedSuggestions = 60;
 
 export const hasMovieProxy = Boolean(proxyUrl);
+export const movieProxyUrl = proxyUrl;
 
 const normalizeSearchText = (value: string) =>
   value

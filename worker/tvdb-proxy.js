@@ -1,4 +1,8 @@
 const TVDB_BASE_URL = "https://api4.thetvdb.com/v4";
+const TVDB_ARTWORK_URL = "https://artworks.thetvdb.com";
+
+// Filter results give poster paths like "/banners/..."; make them full links.
+const artworkUrl = (path) => (path && path.startsWith("/") ? `${TVDB_ARTWORK_URL}${path}` : path);
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://varuns99.github.io",
   "http://localhost:5173",
@@ -137,6 +141,34 @@ const tvdbFetch = async (path, env, params = {}) => {
   return response.json();
 };
 
+const toCandidate = (result, extended) => {
+  const genres = (extended.genres?.length ? extended.genres.map((genre) => genre.name) : result.genres || []).filter(
+    Boolean,
+  );
+
+  const trailer = extended.trailers?.map((item) => youtubeEmbedUrl(item.url)).find(Boolean);
+  const searchTerms = [
+    ...(result.aliases || []),
+    result.name_translated,
+    ...(result.translationsWithLang || []),
+  ].filter((term) => typeof term === "string" && term.trim());
+
+  return {
+    source: "tvdb",
+    tvdbId: Number(result.tvdb_id || extended.id),
+    title: result.name || extended.name || "Untitled",
+    year: result.year || (extended.year ? String(extended.year) : "TBA"),
+    runtime: extended.runtime || 100,
+    genres: genres.slice(0, 3),
+    moods: moodFromGenres(genres),
+    synopsis:
+      result.overview || extended.overview || "No synopsis yet. Add it to the maybe pile and let the room decide.",
+    posterUrl: extended.image || result.image_url || result.poster || "/poster-placeholder.svg",
+    trailerUrl: trailer,
+    searchTerms: Array.from(new Set(searchTerms)),
+  };
+};
+
 const searchMovies = async (query, env) => {
   const searchBody = await tvdbFetch("/search", env, { query, type: "movie", limit: 6 });
   const results = (searchBody.data || []).filter((result) => result.tvdb_id).slice(0, 6);
@@ -149,34 +181,102 @@ const searchMovies = async (query, env) => {
       } catch {
         extended = {};
       }
-
-      const genres = (extended.genres?.length ? extended.genres.map((genre) => genre.name) : result.genres || []).filter(
-        Boolean,
-      );
-
-      const trailer = extended.trailers?.map((item) => youtubeEmbedUrl(item.url)).find(Boolean);
-      const searchTerms = [
-        ...(result.aliases || []),
-        result.name_translated,
-        ...(result.translationsWithLang || []),
-      ].filter((term) => typeof term === "string" && term.trim());
-
-      return {
-        source: "tvdb",
-        tvdbId: Number(result.tvdb_id),
-        title: result.name || extended.name || "Untitled",
-        year: result.year || (extended.year ? String(extended.year) : "TBA"),
-        runtime: extended.runtime || 100,
-        genres: genres.slice(0, 3),
-        moods: moodFromGenres(genres),
-        synopsis:
-          result.overview || extended.overview || "No synopsis yet. Add it to the maybe pile and let the room decide.",
-        posterUrl: extended.image || result.image_url || result.poster || "/poster-placeholder.svg",
-        trailerUrl: trailer,
-        searchTerms: Array.from(new Set(searchTerms)),
-      };
+      return toCandidate(result, extended);
     }),
   );
+};
+
+// Prefer the English title and synopsis when TVDB has them, so a foreign film
+// that browses under its original title reads clearly once it is picked.
+const movieDetails = async (id, env) => {
+  const extended = (await tvdbFetch(`/movies/${id}/extended`, env, { meta: "translations" })).data || {};
+  const translations = extended.translations || {};
+  const englishName = (translations.nameTranslations || []).find((item) => item.language === "eng")?.name;
+  const englishOverview = (translations.overviewTranslations || []).find((item) => item.language === "eng")?.overview;
+  const candidate = toCandidate({ tvdb_id: id }, extended);
+  return {
+    ...candidate,
+    title: englishName || candidate.title,
+    synopsis: englishOverview || extended.overview || "",
+    posterUrl: artworkUrl(candidate.posterUrl),
+  };
+};
+
+// TVDB genre ids, looked up once per isolate by name ("Action" -> 1).
+let cachedGenreIds = null;
+const genreAliases = { "sci-fi": "science fiction" };
+
+const genreIdFor = async (name, env) => {
+  if (!cachedGenreIds) {
+    const body = await tvdbFetch("/genres", env);
+    cachedGenreIds = new Map((body.data || []).map((genre) => [String(genre.name).toLowerCase(), genre.id]));
+  }
+  const key = name.toLowerCase();
+  return cachedGenreIds.get(genreAliases[key] || key);
+};
+
+const MAX_YEARS = 6;
+const MAX_DISCOVER_RESULTS = 60;
+
+// Browse movies by language, release year(s), genre and runtime. TVDB filters
+// one release year per request, so the client sends a few sample years.
+const discoverMovies = async (params, env) => {
+  const years = (params.get("years") || "")
+    .split(",")
+    .map((year) => Number(year))
+    .filter((year) => Number.isInteger(year) && year >= 1888 && year <= new Date().getFullYear() + 1)
+    .slice(0, MAX_YEARS);
+  if (!years.length) return [];
+
+  const lang = params.get("lang") || undefined;
+  const maxRuntime = Number(params.get("maxRuntime")) || Infinity;
+  const genreName = params.get("genre") || "";
+  let genreId;
+  if (genreName) {
+    genreId = await genreIdFor(genreName, env);
+    if (genreId === undefined) return [];
+  }
+
+  const pages = await Promise.all(
+    years.map((year) =>
+      tvdbFetch("/movies/filter", env, {
+        year: String(year),
+        lang,
+        genre: genreId === undefined ? undefined : String(genreId),
+        sort: "score",
+        sortType: "desc",
+        page: "0",
+      })
+        .then((body) => (Array.isArray(body.data) ? body.data : []))
+        .catch(() => null),
+    ),
+  );
+  // One bad year should not sink the search, but if every request failed
+  // (for example, TVDB rejected the filter) report it instead of "no movies".
+  if (pages.every((page) => page === null)) throw new Error("TVDB filter failed");
+
+  const seen = new Set();
+  return pages
+    .flatMap((page) => page || [])
+    .filter((movie) => {
+      if (!movie?.id || !movie.image || seen.has(movie.id)) return false;
+      seen.add(movie.id);
+      return !movie.runtime || movie.runtime <= maxRuntime;
+    })
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .slice(0, MAX_DISCOVER_RESULTS)
+    .map((movie) => ({
+      source: "tvdb",
+      tvdbId: Number(movie.id),
+      title: movie.name || "Untitled",
+      year: movie.year ? String(movie.year) : "TBA",
+      runtime: movie.runtime || 100,
+      genres: genreName ? [genreName] : [],
+      moods: moodFromGenres(genreName ? [genreName] : []),
+      synopsis: "",
+      posterUrl: artworkUrl(movie.image),
+      language: lang,
+    }));
 };
 
 export default {
@@ -193,7 +293,8 @@ export default {
       return json({ ok: true }, {}, corsHeaders);
     }
 
-    if (request.method !== "GET" || url.pathname !== "/search") {
+    const routes = ["/search", "/discover", "/movie"];
+    if (request.method !== "GET" || !routes.includes(url.pathname)) {
       return json({ error: "Not found" }, { status: 404 }, corsHeaders);
     }
 
@@ -201,16 +302,26 @@ export default {
       return json({ error: "TVDB_API_KEY is not configured" }, { status: 500 }, corsHeaders);
     }
 
-    const query = url.searchParams.get("query")?.trim() || "";
-    if (query.length < 2 || query.length > 80) {
-      return json({ results: [] }, {}, corsHeaders);
-    }
+    const cached = { headers: { "cache-control": "public, max-age=3600" } };
 
     try {
-      const results = await searchMovies(query, env);
-      return json({ results }, { headers: { "cache-control": "public, max-age=3600" } }, corsHeaders);
+      if (url.pathname === "/discover") {
+        return json({ results: await discoverMovies(url.searchParams, env) }, cached, corsHeaders);
+      }
+
+      if (url.pathname === "/movie") {
+        const id = Number(url.searchParams.get("id"));
+        if (!Number.isInteger(id) || id <= 0) return json({ error: "Bad movie id" }, { status: 400 }, corsHeaders);
+        return json({ result: await movieDetails(id, env) }, cached, corsHeaders);
+      }
+
+      const query = url.searchParams.get("query")?.trim() || "";
+      if (query.length < 2 || query.length > 80) {
+        return json({ results: [] }, {}, corsHeaders);
+      }
+      return json({ results: await searchMovies(query, env) }, cached, corsHeaders);
     } catch {
-      return json({ error: "TVDB search failed" }, { status: 502 }, corsHeaders);
+      return json({ error: "TVDB request failed" }, { status: 502 }, corsHeaders);
     }
   },
 };

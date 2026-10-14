@@ -244,7 +244,7 @@ h3 {
   border-bottom: 1px solid var(--line);
 }
 
-.view-tabs button {
+.view-tabs > button {
   min-height: 44px;
   margin-bottom: -1px;
   border: 0;
@@ -255,18 +255,19 @@ h3 {
   font-size: 0.95rem;
 }
 
-.view-tabs button:hover:not(:disabled) {
+.view-tabs > button:hover:not(:disabled) {
   background: transparent;
   color: var(--ink);
 }
 
-.view-tabs button.active {
+.view-tabs > button.active {
   border-bottom-color: var(--accent);
   color: var(--ink);
 }
 
 .view {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.25rem;
 }
 
@@ -1279,5 +1280,248 @@ input[type="range"] {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- Signed-out view: locked features ---------- */
+
+.signin-button {
+  flex: 0 0 auto;
+  min-width: 72px;
+  padding: 0 1rem;
+}
+
+.locked-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.locked-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 1rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lock-icon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.view-tabs .locked-control {
+  min-height: 44px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0 0.9rem;
+  font-size: 0.95rem;
+}
+
+.view-tabs .locked-control:hover:not(:disabled) {
+  background: transparent;
+  color: var(--ink);
+}
+
+.signin-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  display: grid;
+  gap: 0.5rem;
+  width: min(280px, calc(100vw - 2rem));
+  margin-top: 0.4rem;
+  padding: 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  text-align: left;
+  white-space: normal;
+}
+
+.signin-popover::before {
+  content: "";
+  position: absolute;
+  top: -0.5rem;
+  left: 0;
+  right: 0;
+  height: 0.5rem;
+}
+
+.signin-popover strong {
+  font-size: 0.95rem;
+}
+
+.signin-popover p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.signin-popover .primary-button {
+  justify-self: start;
+  padding: 0 1.25rem;
+}
+
+.locked-toggle {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-weight: 500;
+}
+
+.locked-toggle:hover:not(:disabled) {
+  background: transparent;
+  color: var(--ink);
+}
+
+.fake-check {
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+
+/* ---------- Signed-out view: discovery ---------- */
+
+.discover-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.roulette-tile.skeleton {
+  opacity: 1;
+  transform: none;
+}
+
+.skeleton-poster {
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.winner-card {
+  margin-top: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.winner-synopsis {
+  max-width: 52ch;
+}
+
+.winner-card .winner-actions {
+  margin-top: 0.6rem;
+}
+
+/* ---------- Collapsible filters ---------- */
+
+.filters-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0 0.9rem;
+  text-align: left;
+}
+
+.filters-toggle-label {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.filters-toggle-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  transition: transform 200ms ease;
+}
+
+.filters-toggle[aria-expanded="true"] .chevron {
+  transform: rotate(180deg);
+}
+
+.collapse {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms ease;
+}
+
+.collapse.open {
+  grid-template-rows: 1fr;
+}
+
+.collapse-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.collapse.open .collapse-inner {
+  overflow: visible;
+}
+
+.collapse.open .filters {
+  padding-top: 1rem;
+}
+
+.discover .roulette-stage {
+  margin-top: 1.25rem;
+}
+
+.winner-card {
+  align-items: start;
+}
+
+.winner-card .best-body {
+  align-content: start;
+  padding-bottom: 0;
+}
+
+.winner-card .winner-actions button {
+  white-space: nowrap;
+}
+
+.winner-card .winner-synopsis {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+}
+
+@media (min-width: 720px) {
+  .winner-card .winner-synopsis {
+    -webkit-line-clamp: 8;
+    line-clamp: 8;
   }
 }

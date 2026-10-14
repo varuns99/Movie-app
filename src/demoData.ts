@@ -1,4 +1,4 @@
-import type { AppState, Mood, Movie, MovieCandidate, PartnerId, Room } from "./types";
+import type { Mood, MovieCandidate } from "./types";
 
 export const moods: Mood[] = [
   "cozy",
@@ -10,20 +10,12 @@ export const moods: Mood[] = [
   "low-effort",
 ];
 
-const now = new Date();
-const daysAgo = (days: number) => new Date(now.getTime() - days * 86400000).toISOString();
-
-export const defaultRoom: Room = {
-  id: "room-demo-velvet",
-  name: "The Velvet Couch Club",
-  partnerA: "Mira",
-  partnerB: "Noah",
-  createdAt: daysAgo(14),
-};
-
+// Offline sample catalog: used for search and discovery when the live movie
+// service is not configured.
 export const demoCandidates: MovieCandidate[] = [
   {
     source: "demo",
+    language: "eng",
     title: "Inception",
     year: "2010",
     runtime: 148,
@@ -36,6 +28,7 @@ export const demoCandidates: MovieCandidate[] = [
   },
   {
     source: "demo",
+    language: "eng",
     title: "Arrival",
     year: "2016",
     runtime: 116,
@@ -48,6 +41,7 @@ export const demoCandidates: MovieCandidate[] = [
   },
   {
     source: "demo",
+    language: "jpn",
     title: "Spirited Away",
     year: "2001",
     runtime: 125,
@@ -60,6 +54,7 @@ export const demoCandidates: MovieCandidate[] = [
   },
   {
     source: "demo",
+    language: "eng",
     title: "Palm Springs",
     year: "2020",
     runtime: 90,
@@ -72,6 +67,7 @@ export const demoCandidates: MovieCandidate[] = [
   },
   {
     source: "demo",
+    language: "eng",
     title: "Knives Out",
     year: "2019",
     runtime: 131,
@@ -84,6 +80,7 @@ export const demoCandidates: MovieCandidate[] = [
   },
   {
     source: "demo",
+    language: "eng",
     title: "About Time",
     year: "2013",
     runtime: 123,
@@ -96,6 +93,7 @@ export const demoCandidates: MovieCandidate[] = [
   },
   {
     source: "demo",
+    language: "eng",
     title: "Mad Max: Fury Road",
     year: "2015",
     runtime: 121,
@@ -108,6 +106,7 @@ export const demoCandidates: MovieCandidate[] = [
   },
   {
     source: "demo",
+    language: "eng",
     title: "The Grand Budapest Hotel",
     year: "2014",
     runtime: 100,
@@ -120,6 +119,7 @@ export const demoCandidates: MovieCandidate[] = [
   },
   {
     source: "demo",
+    language: "eng",
     title: "Get Out",
     year: "2017",
     runtime: 104,
@@ -132,6 +132,7 @@ export const demoCandidates: MovieCandidate[] = [
   },
   {
     source: "demo",
+    language: "eng",
     title: "Everything Everywhere All at Once",
     year: "2022",
     runtime: 140,
@@ -143,57 +144,3 @@ export const demoCandidates: MovieCandidate[] = [
     trailerUrl: "https://www.youtube.com/embed/wxN1T1uxQ2g",
   },
 ];
-
-const seedMovie = (
-  candidate: MovieCandidate,
-  index: number,
-  addedBy: PartnerId,
-  watched?: { watchedAt: string; a: number; b: number; noteA: string; noteB: string },
-): Movie => ({
-  ...candidate,
-  id: `demo-${index}-${candidate.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-  addedBy,
-  addedAt: daysAgo(12 - index),
-  status: watched ? "watched" : "unwatched",
-  watchedAt: watched?.watchedAt,
-  ratings: watched
-    ? {
-        partnerA: { score: watched.a, note: watched.noteA, ratedAt: watched.watchedAt },
-        partnerB: { score: watched.b, note: watched.noteB, ratedAt: watched.watchedAt },
-      }
-    : {},
-});
-
-export const createDemoState = (): AppState => ({
-  room: defaultRoom,
-  movies: [
-    seedMovie(demoCandidates[0], 0, "partnerA", {
-      watchedAt: daysAgo(8),
-      a: 8,
-      b: 10,
-      noteA: "Twisty in the good way. Needed snacks for the last act.",
-      noteB: "Still fun even when I pretend I understand all of it.",
-    }),
-    seedMovie(demoCandidates[5], 5, "partnerB", {
-      watchedAt: daysAgo(5),
-      a: 10,
-      b: 8,
-      noteA: "Soft without being mushy.",
-      noteB: "A very strong blanket movie.",
-    }),
-    seedMovie(demoCandidates[8], 8, "partnerA", {
-      watchedAt: daysAgo(2),
-      a: 8,
-      b: 6,
-      noteA: "Brilliant, but maybe not right before sleep.",
-      noteB: "Great. Also absolutely not low-effort.",
-    }),
-    seedMovie(demoCandidates[1], 1, "partnerB"),
-    seedMovie(demoCandidates[2], 2, "partnerA"),
-    seedMovie(demoCandidates[3], 3, "partnerB"),
-    seedMovie(demoCandidates[4], 4, "partnerA"),
-    seedMovie(demoCandidates[6], 6, "partnerB"),
-    seedMovie(demoCandidates[7], 7, "partnerA"),
-    seedMovie(demoCandidates[9], 9, "partnerB"),
-  ],
-});

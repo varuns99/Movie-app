@@ -1,9 +1,4 @@
-// The two fixed slots used by the signed-out demo room (and by data saved in
-// localStorage before accounts existed). Real accounts use their user id.
-export type PartnerId = "partnerA" | "partnerB";
-
-// Anyone who can add or rate movies: a user id when signed in, or "partnerA" /
-// "partnerB" in the local demo room.
+// Anyone who can add or rate movies: their account (user) id.
 export type MemberId = string;
 
 export type Member = {
@@ -47,19 +42,6 @@ export type Movie = {
   ratings: Partial<Record<MemberId, Rating>>;
 };
 
-export type Room = {
-  id: string;
-  name: string;
-  partnerA: string;
-  partnerB: string;
-  createdAt: string;
-};
-
-export type AppState = {
-  room: Room;
-  movies: Movie[];
-};
-
 export type MovieCandidate = {
   source: "demo" | "tvdb" | "manual";
   tvdbId?: number;
@@ -72,6 +54,8 @@ export type MovieCandidate = {
   posterUrl: string;
   trailerUrl?: string;
   searchTerms?: string[];
+  // Original language as a three-letter code ("eng", "jpn"); used by discovery filters.
+  language?: string;
 };
 
 export type RouletteFilters = {
