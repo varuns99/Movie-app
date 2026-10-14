@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
 import { getCachedMovieSuggestions, hasMovieProxy, searchMovies } from "./movieSearch";
 import {
@@ -19,6 +19,7 @@ import { DiscoverView } from "./DiscoverView";
 import { EmptyState } from "./EmptyState";
 import { LockedFeature } from "./LockedFeature";
 import { RouletteStrip } from "./RouletteStrip";
+import { SplashScreen } from "./SplashScreen";
 import { useRoulette } from "./useRoulette";
 import type { Member, MemberId, Mood, Movie, MovieCandidate, RouletteFilters, TasteProfile } from "./types";
 
@@ -209,6 +210,9 @@ function App() {
   const cloudActive = Boolean(user && cloud.room);
   const cloudMovies = useCloudMovies(user && cloud.room ? cloud.room.id : null);
   const [actionError, setActionError] = useState("");
+  // The splash is skipped for people who ask their device to reduce motion.
+  const [splashDone, setSplashDone] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const finishSplash = useCallback(() => setSplashDone(true), []);
   const showSetup = Boolean(user) && !cloud.room;
   const movies = cloudMovies.movies;
   const members = useMemo<Member[]>(
@@ -398,7 +402,7 @@ function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" inert={!splashDone}>
       <header className="topbar">
         <div className="brand">
           <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
@@ -834,6 +838,7 @@ function App() {
           onClose={() => setRoomOpen(false)}
         />
       )}
+      {!splashDone && <SplashScreen ready={!authLoading} onDone={finishSplash} />}
       {trailerMovie && <TrailerModal movie={trailerMovie} onClose={() => setTrailerMovie(null)} />}
       {ratingMovie && (
         <RatingModal
