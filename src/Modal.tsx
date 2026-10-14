@@ -1,5 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
+
+// Windows can open on top of each other (the trailer over the pick). Escape
+// closes only the one on top.
+const openWindows: object[] = [];
 
 export function Modal({
   title,
@@ -18,13 +22,21 @@ export function Modal({
   // Extra controls shown in the header, left of the close button.
   actions?: ReactNode;
 }) {
+  const token = useRef({}).current;
+  const close = useRef(onClose);
+  close.current = onClose;
+
   useEffect(() => {
+    openWindows.push(token);
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && openWindows[openWindows.length - 1] === token) close.current();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      openWindows.splice(openWindows.indexOf(token), 1);
+    };
+  }, [token]);
 
   return (
     <div

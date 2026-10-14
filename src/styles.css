@@ -326,7 +326,6 @@ h3 {
 }
 
 .best-card p,
-.winner p,
 .synopsis,
 .empty-state p {
   color: var(--muted);
@@ -527,24 +526,6 @@ input[type="range"] {
   font-size: 1rem;
 }
 
-.winner {
-  display: grid;
-  gap: 0.9rem;
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--line);
-}
-
-.winner h3 {
-  font-size: 1.4rem;
-  font-weight: 700;
-}
-
-.winner p {
-  margin: 0.35rem 0 0;
-}
-
-.winner-actions,
 .card-actions,
 .modal-actions {
   display: flex;
@@ -552,7 +533,6 @@ input[type="range"] {
   gap: 0.6rem;
 }
 
-.winner-actions button,
 .card-actions button,
 .modal-actions button,
 .candidate button {
@@ -745,14 +725,6 @@ input[type="range"] {
   margin-right: 0.35rem;
   color: var(--ink);
   font-weight: 600;
-}
-
-.filters-panel .section-heading {
-  margin-bottom: 0.75rem;
-}
-
-.filters-panel .section-heading h2 {
-  font-size: 1rem;
 }
 
 .movie-grid {
@@ -1430,20 +1402,6 @@ input[type="range"] {
   }
 }
 
-.winner-card {
-  margin-top: 1.25rem;
-  padding-bottom: 1.25rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.winner-synopsis {
-  max-width: 52ch;
-}
-
-.winner-card .winner-actions {
-  margin-top: 0.6rem;
-}
-
 /* ---------- Splash screen ---------- */
 
 .splash {
@@ -1576,38 +1534,10 @@ input[type="range"] {
   }
 }
 
-/* ---------- Pick card tweaks and roulette spacing ---------- */
+/* ---------- Roulette spacing ---------- */
 
 .roulette-panel .roulette-stage {
   margin-top: 1.25rem;
-}
-
-.winner-card {
-  align-items: start;
-}
-
-.winner-card .best-body {
-  align-content: start;
-  padding-bottom: 0;
-}
-
-.winner-card .winner-actions button {
-  white-space: nowrap;
-}
-
-.winner-card .winner-synopsis {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
-  line-clamp: 5;
-}
-
-@media (min-width: 720px) {
-  .winner-card .winner-synopsis {
-    -webkit-line-clamp: 8;
-    line-clamp: 8;
-  }
 }
 
 /* ---------- Filters button, summary and window ---------- */
@@ -1687,4 +1617,88 @@ input[type="range"] {
 .history-list small.alt-title {
   color: var(--faint);
   margin-top: 0;
+}
+
+/* ---------- The pick window ---------- */
+
+.pick-window {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.pick-poster {
+  justify-self: center;
+  width: min(55%, 190px);
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-surface);
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.pick-body {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+  min-width: 0;
+}
+
+.pick-body h3 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+
+.pick-body p {
+  margin: 0;
+}
+
+.pick-body p.alt-title {
+  color: var(--faint);
+}
+
+.pick-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.pick-synopsis {
+  margin-top: 0.4rem;
+  color: var(--ink);
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.pick-body .pick-loading {
+  color: var(--faint);
+}
+
+.pick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+
+.pick-actions button {
+  padding: 0 1.1rem;
+  white-space: nowrap;
+}
+
+.view-pick {
+  justify-self: center;
+}
+
+@media (min-width: 560px) {
+  .pick-window {
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 1.4rem;
+    align-items: start;
+  }
+
+  .pick-poster {
+    width: 100%;
+  }
 }

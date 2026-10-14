@@ -7,6 +7,8 @@ type Props<T> = {
   applied: T;
   // What "Reset filters" goes back to.
   defaults: T;
+  // Optional: what Reset does to the draft, e.g. to keep a sort order. Defaults to `defaults`.
+  resetTo?: (draft: T) => T;
   onApply: (next: T) => void;
   // Plain-language recap of the applied filters, shown next to the button.
   summary: string;
@@ -19,7 +21,8 @@ const sameFilters = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.strin
 
 // A "Filters" button that opens a window with the controls, a Reset at the top,
 // and Cancel / Apply filters at the bottom. Nothing changes until Apply.
-export function FiltersSheet<T>({ applied, defaults, onApply, summary, disabled, children }: Props<T>) {
+export function FiltersSheet<T>({ applied, defaults, resetTo, onApply, summary, disabled, children }: Props<T>) {
+  const resetValue = (draft: T) => (resetTo ? resetTo(draft) : defaults);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<T>(applied);
 
@@ -49,8 +52,8 @@ export function FiltersSheet<T>({ applied, defaults, onApply, summary, disabled,
             <button
               type="button"
               className="link-button"
-              disabled={sameFilters(draft, defaults)}
-              onClick={() => setDraft(defaults)}
+              disabled={sameFilters(draft, resetValue(draft))}
+              onClick={() => setDraft(resetValue(draft))}
             >
               Reset filters
             </button>

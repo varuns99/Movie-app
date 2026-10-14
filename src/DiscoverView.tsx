@@ -17,7 +17,8 @@ import { FiltersSheet } from "./FiltersSheet";
 import { LockedFeature } from "./LockedFeature";
 import { listSummary, yearSummary } from "./filterText";
 import { altTitle } from "./titles";
-import { PickCard } from "./PickCard";
+import { PickWindow } from "./PickWindow";
+import { usePickWindow } from "./usePickWindow";
 import { RouletteStrip } from "./RouletteStrip";
 import { YearRange } from "./YearRange";
 import { useRoulette } from "./useRoulette";
@@ -39,6 +40,7 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
   const [attempt, setAttempt] = useState(0);
   const [verifying, setVerifying] = useState(false);
   const [details, setDetails] = useState<MovieCandidate | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -75,14 +77,20 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
   const items = useMemo(() => movies.map((movie) => ({ ...movie, id: String(movie.tvdbId ?? movie.title) })), [movies]);
   const roulette = useRoulette(items);
   const selected = items.find((item) => item.id === roulette.selectedId);
+  const pick = usePickWindow(roulette.selectedId);
 
   useEffect(() => {
     setDetails(selected ?? null);
+    setDetailsLoading(Boolean(selected));
     if (!selected) return;
     let active = true;
-    loadMovieDetails(selected).then((full) => {
-      if (active) setDetails(full);
-    });
+    loadMovieDetails(selected)
+      .then((full) => {
+        if (active) setDetails(full);
+      })
+      .finally(() => {
+        if (active) setDetailsLoading(false);
+      });
     return () => {
       active = false;
     };
@@ -169,27 +177,6 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
         )}
       </FiltersSheet>
 
-      {details && (
-        <PickCard
-          title={details.title}
-          altTitle={altTitle(details.title, details.englishTitle)}
-          posterUrl={details.posterUrl}
-          meta={[details.year, `${details.runtime} min`, details.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
-          synopsis={details.synopsis}
-        >
-          {details.trailerUrl && (
-            <button onClick={() => onTrailer({ title: details.title, trailerUrl: details.trailerUrl })}>Trailer</button>
-          )}
-          <LockedFeature
-            title="Sign in to save movies"
-            body="Add this to your shared watchlist, rate it together and keep a history."
-            onSignIn={onSignIn}
-          >
-            Save to watchlist
-          </LockedFeature>
-        </PickCard>
-      )}
-
       <div className="roulette-stage" aria-live="polite">
         {loadState === "loading" && (
           <>
@@ -226,10 +213,45 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
             <button className="spin-button" disabled={roulette.spinning || verifying} onClick={roulette.spin}>
               {roulette.spinning ? "Choosing..." : verifying ? "Checking languages..." : "Spin roulette"}
             </button>
+            {selected && !pick.open && (
+              <button type="button" className="link-button view-pick" onClick={pick.show}>
+                View tonight&apos;s pick
+              </button>
+            )}
             {sample && <p className="discover-note">Showing sample picks. Live movie search isn&apos;t set up here.</p>}
           </>
         )}
       </div>
+
+      {details && pick.open && (
+        <PickWindow
+          title={details.title}
+          altTitle={altTitle(details.title, details.englishTitle)}
+          posterUrl={details.posterUrl}
+          meta={[details.year, `${details.runtime} min`, details.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
+          synopsis={details.synopsis}
+          loadingSynopsis={detailsLoading}
+          onClose={pick.close}
+        >
+          {details.trailerUrl && (
+            <button onClick={() => onTrailer({ title: details.title, trailerUrl: details.trailerUrl })}>Trailer</button>
+          )}
+          <LockedFeature
+            title="Sign in to save movies"
+            body="Add this to your shared watchlist, rate it together and keep a history."
+            onSignIn={
+              onSignIn
+                ? () => {
+                    pick.close();
+                    onSignIn();
+                  }
+                : undefined
+            }
+          >
+            Save to watchlist
+          </LockedFeature>
+        </PickWindow>
+      )}
 
     </section>
   );

@@ -31,7 +31,8 @@ import { FiltersSheet } from "./FiltersSheet";
 import { listSummary, yearSummary } from "./filterText";
 import { altTitle, titleKey } from "./titles";
 import { LockedFeature } from "./LockedFeature";
-import { PickCard } from "./PickCard";
+import { PickWindow } from "./PickWindow";
+import { usePickWindow } from "./usePickWindow";
 import { RouletteStrip } from "./RouletteStrip";
 import { SplashScreen } from "./SplashScreen";
 import { YearRange } from "./YearRange";
@@ -233,6 +234,26 @@ const sortWatchlist = (movies: Movie[], sort: WatchlistSort, profile: TasteProfi
 
 const DEFAULT_WATCHLIST_MAX_RUNTIME = 300;
 
+type WatchlistFilters = {
+  genres: string[];
+  language: string;
+  yearFrom: number;
+  yearTo: number;
+  status: WatchStatusFilter;
+  maxRuntime: number;
+  sort: WatchlistSort;
+};
+
+const DEFAULT_WATCHLIST_FILTERS: WatchlistFilters = {
+  genres: [],
+  language: "any",
+  yearFrom: FIRST_YEAR,
+  yearTo: CURRENT_YEAR,
+  status: "any",
+  maxRuntime: DEFAULT_WATCHLIST_MAX_RUNTIME,
+  sort: "added-desc",
+};
+
 type View = "tonight" | "watchlist" | "history";
 const views: View[] = ["tonight", "watchlist", "history"];
 const viewLabels: Record<View, string> = { tonight: "Tonight", watchlist: "Watchlist", history: "History" };
@@ -278,13 +299,7 @@ function App() {
   const [trailerMovie, setTrailerMovie] = useState<{ title: string; trailerUrl?: string } | null>(null);
   const [ratingMovie, setRatingMovie] = useState<Movie | null>(null);
   const [filters, setFilters] = useState<RouletteFilters>(DEFAULT_ROULETTE_FILTERS);
-  const [watchlistGenres, setWatchlistGenres] = useState<string[]>([]);
-  const [watchlistLanguage, setWatchlistLanguage] = useState("any");
-  const [watchlistYearFrom, setWatchlistYearFrom] = useState(FIRST_YEAR);
-  const [watchlistYearTo, setWatchlistYearTo] = useState(CURRENT_YEAR);
-  const [watchlistStatus, setWatchlistStatus] = useState<WatchStatusFilter>("any");
-  const [watchlistMaxRuntime, setWatchlistMaxRuntime] = useState(DEFAULT_WATCHLIST_MAX_RUNTIME);
-  const [watchlistSort, setWatchlistSort] = useState<WatchlistSort>("added-desc");
+  const [watchlistFilters, setWatchlistFilters] = useState<WatchlistFilters>(DEFAULT_WATCHLIST_FILTERS);
 
   // Signed-out visitors only get Tonight. Wait for the session check first so a
   // signed-in person opening #watchlist is not bounced to Tonight.
@@ -364,42 +379,34 @@ function App() {
     [movies],
   );
   const profile = useMemo(() => calculateTasteProfile(movies), [movies]);
+  // Sorting is not a filter, so it does not count as "filtering" the list.
   const watchlistFiltersActive =
-    watchlistGenres.length > 0 ||
-    watchlistLanguage !== "any" ||
-    watchlistYearFrom > FIRST_YEAR ||
-    watchlistYearTo < CURRENT_YEAR ||
-    watchlistStatus !== "any" ||
-    watchlistMaxRuntime !== DEFAULT_WATCHLIST_MAX_RUNTIME;
+    watchlistFilters.genres.length > 0 ||
+    watchlistFilters.language !== "any" ||
+    watchlistFilters.yearFrom > FIRST_YEAR ||
+    watchlistFilters.yearTo < CURRENT_YEAR ||
+    watchlistFilters.status !== "any" ||
+    watchlistFilters.maxRuntime !== DEFAULT_WATCHLIST_MAX_RUNTIME;
   const filteredWatchlist = useMemo(() => {
+    const f = watchlistFilters;
     const filtered = movies.filter((movie) => {
-      if (watchlistGenres.length && !movie.genres.some((genre) => watchlistGenres.includes(genre))) return false;
-      if (watchlistLanguage !== "any" && movie.language !== watchlistLanguage) return false;
-      if (!inYearRange(movie.year, watchlistYearFrom, watchlistYearTo)) return false;
-      if (watchlistStatus !== "any" && movie.status !== watchlistStatus) return false;
-      if (movie.runtime > watchlistMaxRuntime) return false;
+      if (f.genres.length && !movie.genres.some((genre) => f.genres.includes(genre))) return false;
+      if (f.language !== "any" && movie.language !== f.language) return false;
+      if (!inYearRange(movie.year, f.yearFrom, f.yearTo)) return false;
+      if (f.status !== "any" && movie.status !== f.status) return false;
+      if (movie.runtime > f.maxRuntime) return false;
       return true;
     });
-    return sortWatchlist(filtered, watchlistSort, profile);
-  }, [
-    movies,
-    watchlistGenres,
-    watchlistLanguage,
-    watchlistYearFrom,
-    watchlistYearTo,
-    watchlistStatus,
-    watchlistMaxRuntime,
-    watchlistSort,
-    profile,
-  ]);
-  const resetWatchlistFilters = () => {
-    setWatchlistGenres([]);
-    setWatchlistLanguage("any");
-    setWatchlistYearFrom(FIRST_YEAR);
-    setWatchlistYearTo(CURRENT_YEAR);
-    setWatchlistStatus("any");
-    setWatchlistMaxRuntime(DEFAULT_WATCHLIST_MAX_RUNTIME);
-  };
+    return sortWatchlist(filtered, f.sort, profile);
+  }, [movies, watchlistFilters, profile]);
+  const watchlistSummary = [
+    watchlistFilters.language === "any" ? "Any language" : languageName(watchlistFilters.language),
+    yearSummary(watchlistFilters.yearFrom, watchlistFilters.yearTo, FIRST_YEAR, CURRENT_YEAR),
+    listSummary(watchlistFilters.genres, "Any genre"),
+    watchlistFilters.status === "any" ? "Any status" : watchlistFilters.status === "watched" ? "Watched" : "Unwatched",
+    watchlistFilters.maxRuntime >= DEFAULT_WATCHLIST_MAX_RUNTIME ? "Any length" : `Up to ${watchlistFilters.maxRuntime} min`,
+    `Sort: ${sortLabels[watchlistFilters.sort]}`,
+  ].join(" · ");
   const moviesByMatch = useMemo(
     () =>
       movies
@@ -414,6 +421,7 @@ function App() {
   );
   const roulette = useRoulette(rouletteMovies);
   const selectedMovie = roulette.selectedId ? movies.find((movie) => movie.id === roulette.selectedId) : undefined;
+  const pick = usePickWindow(roulette.selectedId);
   const watchedMovies = useMemo(
     () =>
       movies
@@ -702,30 +710,6 @@ function App() {
                   )}
                 </FiltersSheet>
 
-                {selectedMovie && (
-                  <PickCard
-                    title={selectedMovie.title}
-                    altTitle={altTitle(selectedMovie.title, selectedMovie.englishTitle)}
-                    posterUrl={selectedMovie.posterUrl}
-                    meta={[selectedMovie.year, `${selectedMovie.runtime} min`, selectedMovie.genres.slice(0, 2).join(", ")]
-                      .filter(Boolean)
-                      .join(" · ")}
-                    synopsis={selectedMovie.synopsis}
-                  >
-                    {selectedMovie.trailerUrl && <button onClick={() => setTrailerMovie(selectedMovie)}>Trailer</button>}
-                    <button
-                      onClick={() =>
-                        updateMovie(selectedMovie.id, (movie) => ({
-                          ...movie,
-                          status: "watched",
-                          watchedAt: movie.watchedAt ?? todayIso(),
-                        }))
-                      }
-                    >
-                      Mark watched
-                    </button>
-                  </PickCard>
-                )}
 
                 <div className="roulette-stage" aria-live="polite">
                   {rouletteMovies.length ? (
@@ -739,11 +723,43 @@ function App() {
                       <button className="spin-button" disabled={roulette.spinning} onClick={spinRoulette}>
                         {roulette.spinning ? "Choosing..." : "Spin roulette"}
                       </button>
+                      {selectedMovie && !pick.open && (
+                        <button type="button" className="link-button view-pick" onClick={pick.show}>
+                          View tonight&apos;s pick
+                        </button>
+                      )}
                     </>
                   ) : (
                     <EmptyState title="No movies match" body="Loosen a filter and the roulette wheel will behave itself again." />
                   )}
                 </div>
+
+                {selectedMovie && pick.open && (
+                  <PickWindow
+                    title={selectedMovie.title}
+                    altTitle={altTitle(selectedMovie.title, selectedMovie.englishTitle)}
+                    posterUrl={selectedMovie.posterUrl}
+                    meta={[selectedMovie.year, `${selectedMovie.runtime} min`, selectedMovie.genres.slice(0, 2).join(", ")]
+                      .filter(Boolean)
+                      .join(" · ")}
+                    synopsis={selectedMovie.synopsis}
+                    onClose={pick.close}
+                  >
+                    {selectedMovie.trailerUrl && <button onClick={() => setTrailerMovie(selectedMovie)}>Trailer</button>}
+                    <button
+                      onClick={() => {
+                        pick.close();
+                        updateMovie(selectedMovie.id, (movie) => ({
+                          ...movie,
+                          status: "watched",
+                          watchedAt: movie.watchedAt ?? todayIso(),
+                        }));
+                      }}
+                    >
+                      Mark watched
+                    </button>
+                  </PickWindow>
+                )}
               </section>
             </div>
           </>
@@ -780,80 +796,75 @@ function App() {
               )}
             </section>
 
-            <section className="panel filters-panel">
-              <div className="section-heading">
-                <h2>Filter and sort</h2>
-                {watchlistFiltersActive && (
-                  <button type="button" className="link-button" onClick={resetWatchlistFilters}>
-                    Reset filters
-                  </button>
-                )}
-              </div>
-              <div className="filters">
-                <label>
-                  Language
-                  <select value={watchlistLanguage} onChange={(event) => setWatchlistLanguage(event.target.value)}>
-                    <option value="any">Any language</option>
-                    {languages.map((code) => (
-                      <option key={code} value={code}>
-                        {languageName(code)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <YearRange
-                  from={watchlistYearFrom}
-                  to={watchlistYearTo}
-                  years={ALL_YEARS}
-                  onChange={(from, to) => {
-                    setWatchlistYearFrom(from);
-                    setWatchlistYearTo(to);
-                  }}
-                />
-                <label>
-                  Status
-                  <select
-                    value={watchlistStatus}
-                    onChange={(event) => setWatchlistStatus(event.target.value as WatchStatusFilter)}
-                  >
-                    <option value="any">Any status</option>
-                    <option value="unwatched">Unwatched</option>
-                    <option value="watched">Watched</option>
-                  </select>
-                </label>
-                <label>
-                  Max runtime
-                  <input
-                    type="range"
-                    min="10"
-                    max={DEFAULT_WATCHLIST_MAX_RUNTIME}
-                    step="5"
-                    value={watchlistMaxRuntime}
-                    onChange={(event) => setWatchlistMaxRuntime(Number(event.target.value))}
+            <FiltersSheet
+              applied={watchlistFilters}
+              defaults={DEFAULT_WATCHLIST_FILTERS}
+              resetTo={(draft) => ({ ...DEFAULT_WATCHLIST_FILTERS, sort: draft.sort })}
+              onApply={setWatchlistFilters}
+              summary={watchlistSummary}
+            >
+              {(draft, change) => (
+                <div className="filters">
+                  <label>
+                    Sort by
+                    <select value={draft.sort} onChange={(event) => change({ sort: event.target.value as WatchlistSort })}>
+                      {watchlistSortOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {sortLabels[option]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Language
+                    <select value={draft.language} onChange={(event) => change({ language: event.target.value })}>
+                      <option value="any">Any language</option>
+                      {languages.map((code) => (
+                        <option key={code} value={code}>
+                          {languageName(code)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Status
+                    <select
+                      value={draft.status}
+                      onChange={(event) => change({ status: event.target.value as WatchStatusFilter })}
+                    >
+                      <option value="any">Any status</option>
+                      <option value="unwatched">Unwatched</option>
+                      <option value="watched">Watched</option>
+                    </select>
+                  </label>
+                  <YearRange
+                    from={draft.yearFrom}
+                    to={draft.yearTo}
+                    years={ALL_YEARS}
+                    onChange={(yearFrom, yearTo) => change({ yearFrom, yearTo })}
                   />
-                  <strong>
-                    {watchlistMaxRuntime >= DEFAULT_WATCHLIST_MAX_RUNTIME ? "Any" : `${watchlistMaxRuntime} min`}
-                  </strong>
-                </label>
-                <label>
-                  Sort by
-                  <select value={watchlistSort} onChange={(event) => setWatchlistSort(event.target.value as WatchlistSort)}>
-                    {watchlistSortOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {sortLabels[option]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <ChipSelect
-                  label="Genre"
-                  options={genres.map((genre) => ({ value: genre, label: genre }))}
-                  selected={watchlistGenres}
-                  max={MAX_GENRES}
-                  onChange={setWatchlistGenres}
-                />
-              </div>
-            </section>
+                  <label>
+                    Max runtime
+                    <input
+                      type="range"
+                      min="10"
+                      max={DEFAULT_WATCHLIST_MAX_RUNTIME}
+                      step="5"
+                      value={draft.maxRuntime}
+                      onChange={(event) => change({ maxRuntime: Number(event.target.value) })}
+                    />
+                    <strong>{draft.maxRuntime >= DEFAULT_WATCHLIST_MAX_RUNTIME ? "Any" : `${draft.maxRuntime} min`}</strong>
+                  </label>
+                  <ChipSelect
+                    label="Genre"
+                    options={genres.map((genre) => ({ value: genre, label: genre }))}
+                    selected={draft.genres}
+                    max={MAX_GENRES}
+                    onChange={(selectedGenres) => change({ genres: selectedGenres })}
+                  />
+                </div>
+              )}
+            </FiltersSheet>
 
             <section className="watchlist">
               <div className="section-heading">
