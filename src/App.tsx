@@ -30,6 +30,7 @@ import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
 import { listSummary, yearSummary } from "./filterText";
 import { altTitle, titleKey } from "./titles";
+import { normalizeTrailerUrl } from "./trailers";
 import { LockedFeature } from "./LockedFeature";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
@@ -1186,7 +1187,7 @@ function ManualMovieModal({ onClose, onAdd }: { onClose: () => void; onAdd: (mov
       moods: selectedMoods.length ? selectedMoods : ["low-effort"],
       synopsis: String(form.get("synopsis") || "A private pick added by the room."),
       posterUrl: String(form.get("posterUrl") || "/poster-placeholder.svg"),
-      trailerUrl: String(form.get("trailerUrl") || "") || undefined,
+      trailerUrl: normalizeTrailerUrl(String(form.get("trailerUrl") || "")),
       language: String(form.get("language") || "") || undefined,
     };
     onAdd(movie);
@@ -1383,12 +1384,13 @@ function RatingModal({
 }
 
 function TrailerModal({ movie, onClose }: { movie: { title: string; trailerUrl?: string }; onClose: () => void }) {
+  const src = normalizeTrailerUrl(movie.trailerUrl);
   return (
     <Modal title={`${movie.title} trailer`} onClose={onClose} wide centered>
-      {movie.trailerUrl ? (
+      {src ? (
         <div className="trailer-frame">
           <iframe
-            src={movie.trailerUrl}
+            src={src}
             title={`${movie.title} trailer`}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen

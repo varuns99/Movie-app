@@ -1,5 +1,6 @@
 import { demoCandidates } from "./demoData";
 import { hasMovieProxy, movieProxyUrl, placeholderPosterUrl } from "./movieSearch";
+import { normalizeTrailerUrl } from "./trailers";
 import type { MovieCandidate } from "./types";
 
 export type DiscoverFilters = {
@@ -256,6 +257,7 @@ export const loadMovieDetails = async (movie: MovieCandidate): Promise<MovieCand
   return {
     ...movie,
     ...body.result,
+    trailerUrl: normalizeTrailerUrl(body.result.trailerUrl),
     posterUrl: movie.posterUrl,
     genres: body.result.genres?.length ? body.result.genres : movie.genres,
   };

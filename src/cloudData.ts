@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "./supabaseClient";
+import { normalizeTrailerUrl } from "./trailers";
 import type { CloudMember, CloudRoom, Mood, Movie, MovieCandidate, Rating, WatchStatus } from "./types";
 
 export const DEFAULT_ROOM_NAME = "Unnamed Movie Room";
@@ -160,7 +161,7 @@ const toMovie = (row: MovieRow): Movie => ({
   moods: row.moods as Mood[],
   synopsis: row.synopsis,
   posterUrl: row.poster_url,
-  trailerUrl: row.trailer_url ?? undefined,
+  trailerUrl: normalizeTrailerUrl(row.trailer_url),
   language: row.language ?? undefined,
   englishTitle: row.english_title ?? undefined,
   addedBy: row.added_by,

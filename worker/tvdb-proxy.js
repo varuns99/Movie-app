@@ -69,22 +69,21 @@ const moodFromGenres = (genres) => {
   return Array.from(moods).slice(0, 3);
 };
 
+// A YouTube video id is 11 characters. TVDB holds many link shapes, including
+// broken ones (".../embed/?v=ID", "watch?v=?v=ID"), so the id is picked out of
+// the link instead of trusting its shape.
+const YOUTUBE_ID = /(?:[?&]v=|\/embed\/|youtu\.be\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/;
+
 const youtubeEmbedUrl = (url) => {
   if (!url) return undefined;
   try {
-    const parsed = new URL(url);
-    if (parsed.hostname.includes("youtu.be")) {
-      const id = parsed.pathname.slice(1);
-      return id ? `https://www.youtube.com/embed/${id}` : undefined;
-    }
-    if (parsed.hostname.includes("youtube.com")) {
-      const id = parsed.searchParams.get("v");
-      return id ? `https://www.youtube.com/embed/${id}` : undefined;
-    }
+    const host = new URL(url).hostname;
+    if (!host.includes("youtube.com") && !host.includes("youtu.be")) return undefined;
   } catch {
     return undefined;
   }
-  return undefined;
+  const id = url.match(YOUTUBE_ID)?.[1];
+  return id ? `https://www.youtube.com/embed/${id}` : undefined;
 };
 
 const login = async (env) => {
