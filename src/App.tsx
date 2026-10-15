@@ -34,7 +34,7 @@ import { normalizeTrailerUrl } from "./trailers";
 import { LockedFeature } from "./LockedFeature";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
-import { RouletteStrip } from "./RouletteStrip";
+import { RouletteStage } from "./RouletteStage";
 import { SegmentedToggle } from "./SegmentedToggle";
 import { SplashScreen } from "./SplashScreen";
 import { YearRange } from "./YearRange";
@@ -481,7 +481,6 @@ function App() {
   );
   const unwatchedCount = movies.length - watchedMovies.length;
 
-  const spinRoulette = () => roulette.spin();
   const rouletteSummary = [
     filters.language === "any" ? "Any language" : languageName(filters.language),
     yearSummary(filters.yearFrom, filters.yearTo, FIRST_YEAR, CURRENT_YEAR),
@@ -782,16 +781,16 @@ function App() {
                 <div className="roulette-stage" aria-live="polite">
                   {rouletteMovies.length ? (
                     <>
-                      <RouletteStrip
+                      <RouletteStage
                         items={rouletteMovies}
                         activeIndex={roulette.activeIndex}
                         spinning={roulette.spinning}
-                        tileRefs={roulette.tileRefs}
+                        selectedId={roulette.selectedId}
+                        label={roulette.spinning ? "Choosing..." : "Spin roulette"}
+                        disabled={roulette.spinning}
+                        onSpin={roulette.spin}
                       />
-                      <button className="spin-button" disabled={roulette.spinning} onClick={spinRoulette}>
-                        {roulette.spinning ? "Choosing..." : "Spin roulette"}
-                      </button>
-                      {selectedMovie && !pick.open && (
+                      {selectedMovie && !pick.open && !pick.waiting && (
                         <button type="button" className="link-button view-pick" onClick={pick.show}>
                           View tonight&apos;s pick
                         </button>
@@ -804,6 +803,7 @@ function App() {
 
                 {selectedMovie && pick.open && (
                   <PickWindow
+                    flyFrom=".coverflow.landed .cover-tile.middle img"
                     title={selectedMovie.title}
                     altTitle={altTitle(selectedMovie.title, selectedMovie.englishTitle)}
                     posterUrl={selectedMovie.posterUrl}

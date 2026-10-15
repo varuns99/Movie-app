@@ -2006,3 +2006,173 @@ body {
   font-size: 0.85rem;
   line-height: 1.4;
 }
+
+/* ---------- Roulette carousel: greyed out until the first spin ---------- */
+
+.roulette-carousel {
+  position: relative;
+  min-width: 0;
+  /* Room for the spin button below the carousel once it has moved down. */
+  padding-bottom: calc(54px + 1rem);
+  transition: padding-bottom 380ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.roulette-carousel.idle {
+  padding-bottom: 0;
+}
+
+.roulette-strip-wrap {
+  transition:
+    opacity 380ms ease,
+    filter 380ms ease;
+}
+
+.roulette-carousel.idle .roulette-strip-wrap {
+  opacity: 0.45;
+  filter: grayscale(1);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Idle: centred on the carousel and a little narrower. After: full width, underneath. */
+.roulette-carousel .spin-button {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% - 54px);
+  width: auto;
+  transition:
+    top 380ms cubic-bezier(0.32, 0.72, 0, 1),
+    left 380ms cubic-bezier(0.32, 0.72, 0, 1),
+    right 380ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 380ms ease,
+    background-color 140ms ease,
+    filter 140ms ease;
+}
+
+.roulette-carousel.idle .spin-button {
+  top: calc((100% - 54px) / 2);
+  left: 18%;
+  right: 18%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* ---------- Roulette carousel: a 3D coverflow ---------- */
+
+.coverflow {
+  --w: clamp(96px, 30vw, 148px);
+  --dur: 500ms;
+  --ease: ease;
+  position: relative;
+  height: calc(var(--w) * 1.5 + 1.6rem);
+  overflow: hidden;
+  /* The sides melt away instead of being cut off. */
+  mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+}
+
+/* The posters are ordered by their real depth (not by z-index), so one moving
+   forward passes smoothly in front of the one it replaces. */
+.coverflow-stage {
+  position: absolute;
+  inset: 0;
+  perspective: 900px;
+  transform-style: preserve-3d;
+}
+
+.coverflow.idle {
+  --dur: 1700ms;
+  --ease: ease-in-out;
+}
+
+.coverflow.spinning {
+  --dur: 140ms;
+  --ease: linear;
+}
+
+.coverflow.landed {
+  --dur: 520ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.cover-tile {
+  position: absolute;
+  top: 0.8rem;
+  left: 50%;
+  width: var(--w);
+  margin-left: calc(var(--w) / -2);
+  aspect-ratio: 2 / 3;
+  filter: brightness(var(--dim));
+  opacity: var(--o);
+  transform: translateX(calc(var(--x) * var(--w))) translateZ(var(--z)) rotateY(var(--ry));
+  transition:
+    transform var(--dur) var(--ease),
+    opacity var(--dur) var(--ease),
+    filter var(--dur) var(--ease);
+  will-change: transform, opacity;
+}
+
+@media (min-width: 720px) {
+  .coverflow {
+    --w: 176px;
+  }
+}
+
+.cover-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-control);
+  object-fit: cover;
+  background: var(--surface-2);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  user-select: none;
+}
+
+.coverflow.spinning .cover-tile.middle img,
+.coverflow.landed .cover-tile.middle img {
+  border: 2px solid var(--accent);
+}
+
+.cover-caption {
+  min-height: 1.5em;
+  margin: 0.45rem 0 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Nothing is chosen while the carousel drifts, so no title yet. */
+.cover-caption {
+  transition: opacity 300ms ease;
+}
+
+.roulette-carousel.idle .cover-caption {
+  opacity: 0;
+}
+
+/* ---------- Windows fade in (the pick's poster flies in separately) ---------- */
+
+.modal-backdrop {
+  animation: modal-backdrop-in 260ms ease both;
+}
+
+.modal {
+  animation: modal-in 320ms ease 60ms both;
+}
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+  }
+}

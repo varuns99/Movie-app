@@ -19,7 +19,7 @@ import { listSummary, yearSummary } from "./filterText";
 import { altTitle, titleKey } from "./titles";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
-import { RouletteStrip } from "./RouletteStrip";
+import { RouletteStage } from "./RouletteStage";
 import { YearRange } from "./YearRange";
 import { useRoulette } from "./useRoulette";
 import type { ActionResult } from "./cloudData";
@@ -240,24 +240,20 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
         )}
         {loadState === "ready" && items.length > 0 && (
           <>
-            <RouletteStrip
+            <RouletteStage
               items={items}
               activeIndex={roulette.activeIndex}
               spinning={roulette.spinning}
-              tileRefs={roulette.tileRefs}
-            />
-            <button
-              className="spin-button"
+              selectedId={roulette.selectedId}
+              label={roulette.spinning ? "Choosing..." : verifying ? "Checking languages..." : "Spin roulette"}
               disabled={roulette.spinning || verifying}
-              onClick={() => {
+              onSpin={(from) => {
                 setAddedTitle("");
                 setSaveError("");
-                roulette.spin();
+                roulette.spin(from);
               }}
-            >
-              {roulette.spinning ? "Choosing..." : verifying ? "Checking languages..." : "Spin roulette"}
-            </button>
-            {selected && !pick.open && (
+            />
+            {selected && !pick.open && !pick.waiting && (
               <button type="button" className="link-button view-pick" onClick={pick.show}>
                 View tonight&apos;s pick
               </button>
@@ -274,6 +270,7 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
 
       {details && pick.open && (
         <PickWindow
+          flyFrom=".coverflow.landed .cover-tile.middle img"
           title={details.title}
           altTitle={altTitle(details.title, details.englishTitle)}
           posterUrl={details.posterUrl}
