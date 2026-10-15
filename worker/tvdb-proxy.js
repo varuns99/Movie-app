@@ -320,9 +320,74 @@ const toCandidate = (result, extended) => {
   };
 };
 
+// TVDB applies its result limit before narrowing to movies, so a long or
+// spider-heavy query can fill a small limit with series, people and lists and
+// leave no movies at all. Ask for plenty and pick the movies ourselves.
+const SEARCH_POOL = 50;
+const SEARCH_RESULTS = 6;
+const MAX_SEARCH_VARIANTS = 6;
+
+const searchPool = async (query, env) => {
+  const body = await tvdbFetch("/search", env, { query, type: "movie", limit: SEARCH_POOL });
+  return (body.data || []).filter((result) => result.tvdb_id && (!result.type || result.type === "movie"));
+};
+
+// TVDB wants whole words (and the hyphens of "Spider-Man"), but people type a
+// word at a time. So besides what was typed, ask without the last one or two
+// words (they may be half typed) and with "spiderman" spelled "spider-man".
+const searchVariants = (query) => {
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  const bases = [words];
+  if (words.length >= 2) bases.push(words.slice(0, -1));
+  if (words.length >= 3) bases.push(words.slice(0, -2));
+  const variants = new Set();
+  bases.forEach((base) => {
+    const text = base.join(" ");
+    variants.add(text);
+    const hyphenated = text.replace(/\b([a-z]{3,})man\b/gi, "$1-man");
+    if (hyphenated !== text) variants.add(hyphenated);
+  });
+  return [...variants].slice(0, MAX_SEARCH_VARIANTS);
+};
+
+// Lower is a better match. Titles are compared ignoring case, accents,
+// punctuation and spaces ("spiderman brand n" starts "Spider-Man: Brand New Day").
+const matchRank = (result, query) => {
+  const want = titleKey(query).replace(/ /g, "");
+  const names = [result.name, result.name_translated, ...(result.aliases || [])]
+    .filter((name) => typeof name === "string" && name.trim())
+    .map((name) => titleKey(name).replace(/ /g, ""));
+  if (names.some((name) => name === want)) return 0;
+  if (names.some((name) => name.startsWith(want))) return 1;
+  if (names.some((name) => name.includes(want))) return 2;
+  if (names.some((name) => name.length >= 4 && want.includes(name))) return 3;
+  return 4;
+};
+
+// Pick what to show. Titles that really match what was typed come first (ties
+// keep TVDB's order); titles that do not match at all are dropped. The one
+// exception is a short query with no real match, where TVDB's own fuzzy answer
+// (a typo such as "inceptoin") is better than nothing.
+const chooseSearchResults = (pools, query) => {
+  const seen = new Set();
+  const all = pools.flat().filter((result) => !seen.has(result.tvdb_id) && seen.add(result.tvdb_id));
+  const ranked = all
+    .map((result, index) => ({ result, index, rank: matchRank(result, query) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index);
+  const strong = ranked.filter((item) => item.rank <= 3);
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  const chosen = strong.length ? strong : words.length <= 2 ? (pools[0] || []).map((result, index) => ({ result, index })) : [];
+  return chosen.slice(0, SEARCH_RESULTS).map((item) => item.result);
+};
+
 const searchMovies = async (query, env) => {
-  const searchBody = await tvdbFetch("/search", env, { query, type: "movie", limit: 6 });
-  const results = (searchBody.data || []).filter((result) => result.tvdb_id).slice(0, 6);
+  const answers = await Promise.all(searchVariants(query).map((variant) => searchPool(variant, env).catch(() => null)));
+  // One failed variant should not sink the search; all of them failing should be reported.
+  if (answers.every((answer) => answer === null)) throw new Error("TVDB search failed");
+  const results = chooseSearchResults(
+    answers.map((answer) => answer || []),
+    query,
+  );
 
   const candidates = await Promise.all(
     results.map(async (result) => {
