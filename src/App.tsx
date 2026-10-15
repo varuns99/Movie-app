@@ -38,6 +38,7 @@ import { usePickWindow } from "./usePickWindow";
 import { RouletteStrip } from "./RouletteStrip";
 import { SplashScreen } from "./SplashScreen";
 import { YearRange } from "./YearRange";
+import { useInstallPrompt } from "./useInstallPrompt";
 import { useRoulette } from "./useRoulette";
 import type { Member, MemberId, Mood, Movie, MovieCandidate, RouletteFilters, TasteProfile } from "./types";
 
@@ -288,6 +289,7 @@ function App() {
   // The splash is skipped for people who ask their device to reduce motion.
   const [splashDone, setSplashDone] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const finishSplash = useCallback(() => setSplashDone(true), []);
+  const installApp = useInstallPrompt();
   const showSetup = Boolean(user) && !cloud.room;
   const movies = cloudMovies.movies;
   const members = useMemo<Member[]>(
@@ -955,6 +957,17 @@ function App() {
           </section>
         )}
       </main>
+      {(installApp.canInstall || installApp.iosHint) && (
+        <div className="install-row">
+          {installApp.canInstall ? (
+            <button type="button" onClick={installApp.install}>
+              Install app
+            </button>
+          ) : (
+            <p>To install: tap Share, then Add to Home Screen.</p>
+          )}
+        </div>
+      )}
       <footer className="credits">
         Movie data from{" "}
         <a href="https://thetvdb.com" target="_blank" rel="noreferrer">

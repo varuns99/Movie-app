@@ -1730,3 +1730,26 @@ input[type="range"] {
 .imdb-link:active {
   transform: scale(0.98);
 }
+
+/* ---------- Installed app ---------- */
+
+body {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.install-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.install-row button {
+  padding: 0 1.4rem;
+}
+
+.install-row p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}

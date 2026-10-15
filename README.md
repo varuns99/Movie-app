@@ -79,3 +79,9 @@ The app talks to whatever server sits behind `VITE_MOVIE_PROXY_URL` through one 
 ```bash
 pnpm build
 ```
+
+## Installing the app
+
+The site is an installable web app (a Progressive Web App). On Android Chrome, open the site and tap the **Install app** button at the bottom of the page, or Chrome's menu, then **Install app**. On iPhone, open it in Safari, tap Share, then **Add to Home Screen**. Once installed it opens full screen with its own icon, and the app's own screens open even with a poor connection (movie data and accounts still need the network).
+
+Files: `public/manifest.webmanifest` (name, colours, icons; the app name appears here too), `public/sw.js` (the service worker, which only saves the app's own files), `public/icons/` (the icons) and `src/useInstallPrompt.ts` (the Install app button). The service worker is registered only in the built site (`src/main.tsx`), not during `pnpm dev`. To change what it saves, edit `public/sw.js` and bump `VERSION` at its top.
