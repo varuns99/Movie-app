@@ -57,7 +57,8 @@ const moodLabels: Record<Mood, string> = {
 
 const todayIso = () => new Date().toISOString();
 
-const LANGUAGE_CHECK_KEY = "movie-night-roulette:movie-info-checked-v2";
+// v3: saved films are looked at once more so a trailer in the wrong language can be replaced.
+const LANGUAGE_CHECK_KEY = "movie-night-roulette:movie-info-checked-v3";
 
 const readCheckedLanguages = () => {
   try {
@@ -510,13 +511,17 @@ function App() {
         const info = await fetchMovieInfo(movie.tvdbId);
         if (!info.language && !info.englishTitle && !info.imdbId && !info.checked) continue; // Try again on a later visit.
 
-        const patch: { language?: string; englishTitle?: string; title?: string; imdbId?: string } = {};
+        const patch: { language?: string; englishTitle?: string; title?: string; imdbId?: string; trailerUrl?: string } = {};
         // An unconfirmed (TVDB-only) language may fill a gap but never overwrites a stored one.
         if (info.language && info.language !== movie.language && (info.checked || !movie.language)) {
           patch.language = info.language;
         }
         if (info.englishTitle && info.englishTitle !== movie.englishTitle) patch.englishTitle = info.englishTitle;
         if (info.imdbId && info.imdbId !== movie.imdbId) patch.imdbId = info.imdbId;
+        // Swap in an English trailer when the saved one is something else (e.g. French).
+        if (info.trailerUrl && /^en/i.test(info.trailerLanguage ?? "") && info.trailerUrl !== movie.trailerUrl) {
+          patch.trailerUrl = info.trailerUrl;
+        }
         // Saved under its English name but the film has its own: use the film's own.
         if (info.title && info.englishTitle && titleKey(movie.title) === titleKey(info.englishTitle) && titleKey(info.title) !== titleKey(movie.title)) {
           patch.title = info.title;

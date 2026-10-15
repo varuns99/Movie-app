@@ -290,14 +290,21 @@ export const useCloudMovies = (roomId: string | null) => {
   const updateInfo = useCallback(
     async (
       movieId: string,
-      patch: { language?: string; englishTitle?: string; title?: string; imdbId?: string },
+      patch: { language?: string; englishTitle?: string; title?: string; imdbId?: string; trailerUrl?: string },
     ): Promise<ActionResult> => {
       if (!supabase) return NOT_SET_UP;
-      const columns: { language?: string; english_title?: string; title?: string; imdb_id?: string } = {};
+      const columns: {
+        language?: string;
+        english_title?: string;
+        title?: string;
+        imdb_id?: string;
+        trailer_url?: string;
+      } = {};
       if (patch.language) columns.language = patch.language;
       if (patch.englishTitle) columns.english_title = patch.englishTitle;
       if (patch.title) columns.title = patch.title;
       if (patch.imdbId) columns.imdb_id = patch.imdbId;
+      if (patch.trailerUrl) columns.trailer_url = patch.trailerUrl;
       if (!Object.keys(columns).length) return { ok: true };
       try {
         const { error: updateError } = await supabase.from("movies").update(columns).eq("id", movieId);

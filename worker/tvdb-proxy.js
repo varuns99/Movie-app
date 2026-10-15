@@ -301,12 +301,40 @@ const titleTexts = (result) => {
   return [...new Set(found)];
 };
 
+// A film can have trailers in several languages and TVDB lists them in no
+// particular order. Prefer an English one (the app is in English), then one in
+// the film's own language, then one with no language given; among those,
+// trailers named "trailer" come before teasers and clips. Returns the embed
+// link and the language it is in.
+const chooseTrailer = (trailers, originalLanguage) => {
+  const candidates = (trailers || [])
+    .map((item, index) => ({
+      url: youtubeEmbedUrl(item?.url),
+      language: String(item?.language || "").toLowerCase(),
+      isTrailer: /trailer/i.test(String(item?.name || "")),
+      index,
+    }))
+    .filter((item) => item.url);
+  const languageRank = (language) => {
+    if (/^en/.test(language)) return 0;
+    if (originalLanguage && language && language === String(originalLanguage).toLowerCase()) return 1;
+    return language ? 3 : 2;
+  };
+  candidates.sort(
+    (a, b) =>
+      languageRank(a.language) - languageRank(b.language) ||
+      Number(b.isTrailer) - Number(a.isTrailer) ||
+      a.index - b.index,
+  );
+  return candidates[0] ? { url: candidates[0].url, language: candidates[0].language || undefined } : {};
+};
+
 const toCandidate = (result, extended) => {
   const genres = (extended.genres?.length ? extended.genres.map((genre) => genre.name) : result.genres || []).filter(
     Boolean,
   );
 
-  const trailer = extended.trailers?.map((item) => youtubeEmbedUrl(item.url)).find(Boolean);
+  const trailer = chooseTrailer(extended.trailers, result.primary_language || extended.originalLanguage);
   const searchTerms = titleTexts(result);
 
   const year = result.year || (extended.year ? String(extended.year) : "TBA");
@@ -329,7 +357,8 @@ const toCandidate = (result, extended) => {
     synopsis:
       result.overview || extended.overview || "No synopsis yet. Add it to the maybe pile and let the room decide.",
     posterUrl: extended.image || result.image_url || result.poster || "/poster-placeholder.svg",
-    trailerUrl: trailer,
+    trailerUrl: trailer.url,
+    trailerLanguage: trailer.language,
     language: result.primary_language || extended.originalLanguage || undefined,
     imdbId: imdbIdFrom(extended.remoteIds),
     searchTerms: Array.from(new Set(searchTerms)),

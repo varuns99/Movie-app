@@ -239,6 +239,8 @@ export const fetchMovieInfo = async (
   imdbId?: string;
   upcoming?: boolean;
   releaseDate?: string;
+  trailerUrl?: string;
+  trailerLanguage?: string;
   checked: boolean;
 }> => {
   if (!movieProxyUrl) return { checked: false };
@@ -255,6 +257,8 @@ export const fetchMovieInfo = async (
       imdbId: body.result?.imdbId || undefined,
       upcoming: typeof body.result?.upcoming === "boolean" ? body.result.upcoming : undefined,
       releaseDate: body.result?.releaseDate || undefined,
+      trailerUrl: body.result?.trailerUrl || undefined,
+      trailerLanguage: body.result?.trailerLanguage || undefined,
       checked: Boolean(body.result?.languageChecked),
     };
   } catch {
