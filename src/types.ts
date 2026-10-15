@@ -60,6 +60,9 @@ export type MovieCandidate = {
   posterUrl: string;
   trailerUrl?: string;
   searchTerms?: string[];
+  // True when the film is not out yet; `releaseDate` ("2027-11-05") is its earliest date still ahead.
+  upcoming?: boolean;
+  releaseDate?: string;
   // Original language as a three-letter code ("eng", "jpn"); used by discovery filters.
   language?: string;
   englishTitle?: string;

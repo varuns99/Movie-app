@@ -1976,3 +1976,33 @@ body {
   padding: 0 1rem;
   font-size: 0.78rem;
 }
+
+/* ---------- Films that are not out yet ---------- */
+
+.upcoming-badge {
+  position: absolute;
+  left: 0.5rem;
+  bottom: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  color: var(--on-accent);
+  background: var(--accent);
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.candidate small.upcoming-tag {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.upcoming-note {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  color: var(--ink);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}

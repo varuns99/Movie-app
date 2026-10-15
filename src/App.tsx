@@ -38,6 +38,8 @@ import { RouletteStrip } from "./RouletteStrip";
 import { SegmentedToggle } from "./SegmentedToggle";
 import { SplashScreen } from "./SplashScreen";
 import { YearRange } from "./YearRange";
+import { rememberRelease, useReleaseStatus } from "./release";
+import { isUpcomingCandidate, releaseLabel } from "./releaseDates";
 import { useInstallPrompt } from "./useInstallPrompt";
 import { useRoulette } from "./useRoulette";
 import type { Member, MemberId, Mood, Movie, MovieCandidate, RouletteFilters, TasteProfile } from "./types";
@@ -186,8 +188,10 @@ const DEFAULT_ROULETTE_FILTERS: RouletteFilters = {
   onlyUnwatched: true,
 };
 
-const filterMovies = (movies: Movie[], filters: RouletteFilters) =>
+// Films that are not out yet are never picked, whatever the filters say.
+const filterMovies = (movies: Movie[], filters: RouletteFilters, isUnreleased: (movie: Movie) => boolean) =>
   movies.filter((movie) => {
+    if (isUnreleased(movie)) return false;
     if (filters.onlyUnwatched && movie.status !== "unwatched") return false;
     if (movie.runtime > filters.maxRuntime) return false;
     if (filters.genres.length && !movie.genres.some((genre) => filters.genres.includes(genre))) return false;
@@ -197,7 +201,7 @@ const filterMovies = (movies: Movie[], filters: RouletteFilters) =>
     return true;
   });
 
-type WatchStatusFilter = "any" | "watched" | "unwatched";
+type WatchStatusFilter = "any" | "watched" | "unwatched" | "unreleased";
 type WatchlistSort =
   | "added-desc"
   | "added-asc"
@@ -310,6 +314,7 @@ function App() {
   const installApp = useInstallPrompt();
   const showSetup = Boolean(user) && !cloud.room;
   const movies = cloudMovies.movies;
+  const release = useReleaseStatus(movies, cloudActive);
   const members = useMemo<Member[]>(
     () => cloud.members.map((member) => ({ id: member.userId, displayName: member.displayName })),
     [cloud.members],
@@ -429,31 +434,39 @@ function App() {
       if (f.genres.length && !movie.genres.some((genre) => f.genres.includes(genre))) return false;
       if (f.language !== "any" && movie.language !== f.language) return false;
       if (!inYearRange(movie.year, f.yearFrom, f.yearTo)) return false;
-      if (f.status !== "any" && movie.status !== f.status) return false;
+      if (f.status === "unreleased") {
+        if (!release.isUnreleased(movie)) return false;
+      } else if (f.status !== "any" && movie.status !== f.status) return false;
       if (movie.runtime > f.maxRuntime) return false;
       return true;
     });
     return sortWatchlist(filtered, f.sort, profile);
-  }, [movies, watchlistFilters, profile]);
+  }, [movies, watchlistFilters, profile, release]);
   const watchlistSummary = [
     watchlistFilters.language === "any" ? "Any language" : languageName(watchlistFilters.language),
     yearSummary(watchlistFilters.yearFrom, watchlistFilters.yearTo, FIRST_YEAR, CURRENT_YEAR),
     listSummary(watchlistFilters.genres, "Any genre"),
-    watchlistFilters.status === "any" ? "Any status" : watchlistFilters.status === "watched" ? "Watched" : "Unwatched",
+    watchlistFilters.status === "any"
+      ? "Any status"
+      : watchlistFilters.status === "watched"
+        ? "Watched"
+        : watchlistFilters.status === "unreleased"
+          ? "Not out yet"
+          : "Unwatched",
     watchlistFilters.maxRuntime >= DEFAULT_WATCHLIST_MAX_RUNTIME ? "Any length" : `Up to ${watchlistFilters.maxRuntime} min`,
     `Sort: ${sortLabels[watchlistFilters.sort]}`,
   ].join(" · ");
   const moviesByMatch = useMemo(
     () =>
       movies
-        .filter((movie) => movie.status === "unwatched")
+        .filter((movie) => movie.status === "unwatched" && !release.isUnreleased(movie))
         .sort((a, b) => matchScore(b, profile) - matchScore(a, profile)),
-    [movies, profile],
+    [movies, profile, release],
   );
   const bestTonight = moviesByMatch[0];
   const rouletteMovies = useMemo(
-    () => filterMovies(movies, filters).sort((a, b) => matchScore(b, profile) - matchScore(a, profile)),
-    [movies, filters, profile],
+    () => filterMovies(movies, filters, release.isUnreleased).sort((a, b) => matchScore(b, profile) - matchScore(a, profile)),
+    [movies, filters, profile, release],
   );
   const roulette = useRoulette(rouletteMovies);
   const selectedMovie = roulette.selectedId ? movies.find((movie) => movie.id === roulette.selectedId) : undefined;
@@ -540,6 +553,7 @@ function App() {
     if (!user) return;
 
     setActionError("");
+    rememberRelease(candidate);
     cloudMovies.add(candidate, user.id).then((result) => {
       reportFailure(result);
       if (result.ok) {
@@ -900,6 +914,7 @@ function App() {
                       <option value="any">Any status</option>
                       <option value="unwatched">Unwatched</option>
                       <option value="watched">Watched</option>
+                      <option value="unreleased">Not out yet</option>
                     </select>
                   </label>
                   <YearRange
@@ -946,6 +961,7 @@ function App() {
                     {filteredWatchlist.map((movie) => (
                       <MovieCard
                         key={movie.id}
+                        releaseText={release.releaseText(movie)}
                         movie={movie}
                         score={matchScore(movie, profile)}
                         members={members}
@@ -1064,6 +1080,11 @@ function App() {
           meta={`${viewMovie.year} · ${viewMovie.runtime} min`}
           details={
             <div className="view-details">
+              {release.releaseText(viewMovie) && (
+                <p className="upcoming-note">
+                  Not out yet ({release.releaseText(viewMovie)}). It stays off the roulette and recommendations until it is released.
+                </p>
+              )}
               {viewMovie.genres.length > 0 && <p className="chip-row">{viewMovie.genres.join(" · ")}</p>}
               <RatingSummary movie={viewMovie} members={members} />
               <p className="meta-row">
@@ -1174,6 +1195,9 @@ function AddMovieBar({
                     <p>
                       {movie.year} • {movie.runtime} min
                     </p>
+                    {isUpcomingCandidate(movie) && (
+                      <small className="upcoming-tag">Not out yet · {releaseLabel(movie.releaseDate, movie.year)}</small>
+                    )}
                     <small>{movie.genres.join(" / ")}</small>
                   </div>
                   <button disabled={alreadyAdded} onClick={() => onAdd(movie)}>
@@ -1220,13 +1244,15 @@ type MovieCardProps = {
   movie: Movie;
   score: number;
   members: Member[];
+  // "Nov 2027" while the film is not out yet.
+  releaseText?: string;
   onView: () => void;
   onToggleWatched: () => void;
 };
 
 // Every part of the card sits in its own row so that, across a row of cards, the
 // titles, years, ratings and buttons line up exactly (see .movie-card in the styles).
-function MovieCard({ movie, score, members, onView, onToggleWatched }: MovieCardProps) {
+function MovieCard({ movie, score, members, releaseText, onView, onToggleWatched }: MovieCardProps) {
   const pending = movie.status === "watched" && !ratingProgress(movie, members).complete;
   const alt = altTitle(movie.title, movie.englishTitle);
   return (
@@ -1240,6 +1266,7 @@ function MovieCard({ movie, score, members, onView, onToggleWatched }: MovieCard
     >
       <div className="poster-wrap">
         <img src={movie.posterUrl} alt="" loading="lazy" />
+        {releaseText && <em className="upcoming-badge">Not out yet</em>}
         <span>
           {score}%{pending ? "*" : ""}
         </span>

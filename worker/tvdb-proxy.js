@@ -254,6 +254,33 @@ const imdbIdFrom = (remoteIds) => {
   return /^tt\d{6,10}$/.test(String(id || "")) ? String(id) : undefined;
 };
 
+// Is the film still to come? TVDB's own status ("Released", "Announced",
+// "Post-Production"...) decides when it has one; an older film is never upcoming
+// whatever its status says, and a later year's film is always upcoming. With no status, a release date in the future or a
+// release year after this one means it is not out yet. `releaseDate` is the
+// earliest date still ahead of us ("2027-11-05"), when TVDB lists one.
+const releaseInfo = ({ statusName, year, dates }) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const thisYear = Number(today.slice(0, 4));
+  const releaseYear = Number(year);
+  const future = dates.filter((date) => date > today).sort()[0];
+  const status = String(statusName || "").trim().toLowerCase();
+
+  let upcoming;
+  if (Number.isFinite(releaseYear) && releaseYear < thisYear) upcoming = false;
+  else if (Number.isFinite(releaseYear) && releaseYear > thisYear) upcoming = true; // Cannot be out yet, whatever the status says.
+  else if (status) upcoming = status !== "released";
+  else if (dates.length) upcoming = Boolean(future) && !dates.some((date) => date <= today);
+  else upcoming = Number.isFinite(releaseYear) && releaseYear > thisYear;
+
+  return { upcoming, releaseDate: upcoming ? future : undefined };
+};
+
+const datesFrom = (extended) =>
+  [...(extended.releases || []), extended.first_release]
+    .map((release) => String(release?.date || release?.Date || "").slice(0, 10))
+    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date));
+
 const toCandidate = (result, extended) => {
   const genres = (extended.genres?.length ? extended.genres.map((genre) => genre.name) : result.genres || []).filter(
     Boolean,
@@ -266,11 +293,20 @@ const toCandidate = (result, extended) => {
     ...(result.translationsWithLang || []),
   ].filter((term) => typeof term === "string" && term.trim());
 
+  const year = result.year || (extended.year ? String(extended.year) : "TBA");
+  const release = releaseInfo({
+    statusName: extended.status?.name || (typeof result.status === "string" ? result.status : result.status?.name),
+    year,
+    dates: datesFrom(extended),
+  });
+
   return {
     source: "tvdb",
     tvdbId: Number(result.tvdb_id || extended.id),
     title: result.name || extended.name || "Untitled",
-    year: result.year || (extended.year ? String(extended.year) : "TBA"),
+    year,
+    upcoming: release.upcoming,
+    releaseDate: release.releaseDate,
     runtime: extended.runtime || 100,
     genres: genres.slice(0, 3),
     moods: moodFromGenres(genres),
@@ -435,6 +471,8 @@ const discoverMovies = async (params, env) => {
         tvdbId: Number(movie.id),
         title: movie.name || "Untitled",
         year: movie.year ? String(movie.year) : "TBA",
+        upcoming: releaseInfo({ statusName: movie.status?.name, year: movie.year, dates: [] }).upcoming,
+        tvdbStatus: movie.status?.name || undefined,
         runtime: movie.runtime || 100,
         genres: names,
         moods: moodFromGenres(names),

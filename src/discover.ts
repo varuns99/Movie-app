@@ -1,5 +1,6 @@
 import { demoCandidates } from "./demoData";
 import { hasMovieProxy, movieProxyUrl, placeholderPosterUrl } from "./movieSearch";
+import { isUpcomingCandidate } from "./releaseDates";
 import { normalizeTrailerUrl } from "./trailers";
 import type { MovieCandidate } from "./types";
 
@@ -165,7 +166,8 @@ export const discoverMovies = async (
   signal?: AbortSignal,
   exclude?: (movie: MovieCandidate) => boolean,
 ): Promise<DiscoverResult> => {
-  const keep = (movie: MovieCandidate) => !exclude?.(movie);
+  // Films that are not out yet are never offered.
+  const keep = (movie: MovieCandidate) => !isUpcomingCandidate(movie) && !exclude?.(movie);
   if (!hasMovieProxy || !movieProxyUrl) {
     return { movies: shuffle(filterDemoCatalog(filters).filter(keep)), sample: true };
   }
@@ -230,7 +232,15 @@ export const findLanguageMismatches = async (
 // asked, in which case the language is only TVDB's unconfirmed label.
 export const fetchMovieInfo = async (
   tvdbId: number,
-): Promise<{ title?: string; language?: string; englishTitle?: string; imdbId?: string; checked: boolean }> => {
+): Promise<{
+  title?: string;
+  language?: string;
+  englishTitle?: string;
+  imdbId?: string;
+  upcoming?: boolean;
+  releaseDate?: string;
+  checked: boolean;
+}> => {
   if (!movieProxyUrl) return { checked: false };
   try {
     const url = new URL("/movie", movieProxyUrl);
@@ -243,6 +253,8 @@ export const fetchMovieInfo = async (
       language: body.result?.language || undefined,
       englishTitle: body.result?.englishTitle || undefined,
       imdbId: body.result?.imdbId || undefined,
+      upcoming: typeof body.result?.upcoming === "boolean" ? body.result.upcoming : undefined,
+      releaseDate: body.result?.releaseDate || undefined,
       checked: Boolean(body.result?.languageChecked),
     };
   } catch {
