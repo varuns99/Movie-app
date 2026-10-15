@@ -950,6 +950,8 @@ input[type="range"] {
 }
 
 .rating-summary strong {
+  /* The average always sits on its own line, below the individual ratings. */
+  flex-basis: 100%;
   color: var(--ink);
   font-weight: 600;
 }
@@ -2175,4 +2177,17 @@ body {
   from {
     opacity: 0;
   }
+}
+
+/* ---------- Trailer button: a small play triangle before the word ---------- */
+
+.trailer-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.trailer-button svg {
+  flex: none;
 }

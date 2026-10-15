@@ -20,6 +20,7 @@ import { altTitle, titleKey } from "./titles";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
 import { RouletteStage } from "./RouletteStage";
+import { TrailerButton } from "./TrailerButton";
 import { YearRange } from "./YearRange";
 import { useRoulette } from "./useRoulette";
 import type { ActionResult } from "./cloudData";
@@ -281,7 +282,7 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
           onClose={pick.close}
         >
           {details.trailerUrl && (
-            <button onClick={() => onTrailer({ title: details.title, trailerUrl: details.trailerUrl })}>Trailer</button>
+            <TrailerButton onClick={() => onTrailer({ title: details.title, trailerUrl: details.trailerUrl })} />
           )}
           {signedIn ? (
             <button

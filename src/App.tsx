@@ -32,6 +32,7 @@ import { listSummary, yearSummary } from "./filterText";
 import { altTitle, titleKey } from "./titles";
 import { normalizeTrailerUrl } from "./trailers";
 import { LockedFeature } from "./LockedFeature";
+import { TrailerButton } from "./TrailerButton";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
 import { RouletteStage } from "./RouletteStage";
@@ -814,7 +815,7 @@ function App() {
                     synopsis={selectedMovie.synopsis}
                     onClose={pick.close}
                   >
-                    {selectedMovie.trailerUrl && <button onClick={() => setTrailerMovie(selectedMovie)}>Trailer</button>}
+                    {selectedMovie.trailerUrl && <TrailerButton onClick={() => setTrailerMovie(selectedMovie)} />}
                     <button
                       onClick={() => {
                         pick.close();
@@ -1100,7 +1101,7 @@ function App() {
           <button className="primary-button" onClick={() => setRatingMovie(viewMovie)}>
             Rate
           </button>
-          {normalizeTrailerUrl(viewMovie.trailerUrl) && <button onClick={() => setTrailerMovie(viewMovie)}>Trailer</button>}
+          {normalizeTrailerUrl(viewMovie.trailerUrl) && <TrailerButton onClick={() => setTrailerMovie(viewMovie)} />}
           <button
             className="remove-button"
             onClick={() => {
@@ -1253,7 +1254,9 @@ type MovieCardProps = {
 // Every part of the card sits in its own row so that, across a row of cards, the
 // titles, years, ratings and buttons line up exactly (see .movie-card in the styles).
 function MovieCard({ movie, score, members, releaseText, onView, onToggleWatched }: MovieCardProps) {
-  const pending = movie.status === "watched" && !ratingProgress(movie, members).complete;
+  // Ratings show on the card only once everyone has rated; until then the
+  // View window has them, with who is still to rate.
+  const fullyRated = movie.status === "watched" && ratingProgress(movie, members).complete;
   const alt = altTitle(movie.title, movie.englishTitle);
   return (
     // Tapping anywhere on the card opens the same window as View, except on the buttons.
@@ -1267,16 +1270,14 @@ function MovieCard({ movie, score, members, releaseText, onView, onToggleWatched
       <div className="poster-wrap">
         <img src={movie.posterUrl} alt="" loading="lazy" />
         {releaseText && <em className="upcoming-badge">Not out yet</em>}
-        <span>
-          {score}%{pending ? "*" : ""}
-        </span>
+        <span>{score}%</span>
       </div>
       <h3 className="card-title">{movie.title}</h3>
       {alt && <p className="alt-title card-alt">({alt})</p>}
       <p className="card-meta">
         {movie.year} · {movie.runtime} min
       </p>
-      {movie.status === "watched" && (
+      {fullyRated && (
         <div className="card-rating">
           <RatingSummary movie={movie} members={members} />
         </div>
