@@ -281,17 +281,33 @@ const datesFrom = (extended) =>
     .map((release) => String(release?.date || release?.Date || "").slice(0, 10))
     .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date));
 
+// Every title a search result goes by: its own name, aliases and the translated
+// titles TVDB lists ("Verdens Verste Menneske" is also "The Worst Person in the
+// World"). Whatever the fields are called, anything that looks like a name or
+// a translation is taken (never the descriptions).
+const titleTexts = (result) => {
+  const found = [];
+  const add = (value, depth = 0) => {
+    if (typeof value === "string") {
+      if (value.trim()) found.push(value.trim());
+    } else if (depth < 2 && value && typeof value === "object") {
+      Object.values(value).forEach((item) => add(item, depth + 1));
+    }
+  };
+  Object.entries(result || {}).forEach(([key, value]) => {
+    if (/overview/i.test(key)) return;
+    if (/^(name|extended_title)$|alias|translat|title/i.test(key)) add(value);
+  });
+  return [...new Set(found)];
+};
+
 const toCandidate = (result, extended) => {
   const genres = (extended.genres?.length ? extended.genres.map((genre) => genre.name) : result.genres || []).filter(
     Boolean,
   );
 
   const trailer = extended.trailers?.map((item) => youtubeEmbedUrl(item.url)).find(Boolean);
-  const searchTerms = [
-    ...(result.aliases || []),
-    result.name_translated,
-    ...(result.translationsWithLang || []),
-  ].filter((term) => typeof term === "string" && term.trim());
+  const searchTerms = titleTexts(result);
 
   const year = result.year || (extended.year ? String(extended.year) : "TBA");
   const release = releaseInfo({
@@ -351,17 +367,37 @@ const searchVariants = (query) => {
 };
 
 // Lower is a better match. Titles are compared ignoring case, accents,
-// punctuation and spaces ("spiderman brand n" starts "Spider-Man: Brand New Day").
-const matchRank = (result, query) => {
-  const want = titleKey(query).replace(/ /g, "");
-  const names = [result.name, result.name_translated, ...(result.aliases || [])]
-    .filter((name) => typeof name === "string" && name.trim())
-    .map((name) => titleKey(name).replace(/ /g, ""));
+// punctuation, spaces and "and" ("deadpool and wolverine" = "Deadpool & Wolverine"),
+// so "spiderman brand n" starts "Spider-Man: Brand New Day". A match on the
+// film's own title counts for more than one on a translation or alias, so a
+// foreign film that is merely called the same in English comes after the real one.
+const matchKey = (text) =>
+  titleKey(text)
+    .split(" ")
+    .filter((word) => word && word !== "and")
+    .join("");
+
+const rankAgainst = (names, want) => {
+  if (!want) return 4;
   if (names.some((name) => name === want)) return 0;
   if (names.some((name) => name.startsWith(want))) return 1;
   if (names.some((name) => name.includes(want))) return 2;
-  if (names.some((name) => name.length >= 4 && want.includes(name))) return 3;
+  // The typed text goes on past a whole title: the longer that title, the better.
+  const longest = Math.max(0, ...names.filter((name) => name.length >= 4 && want.startsWith(name)).map((name) => name.length));
+  if (longest) return 3 + 0.4 * (1 - longest / want.length);
   return 4;
+};
+
+const matchRank = (result, query) => {
+  const want = matchKey(query);
+  const own = rankAgainst(
+    [result.name].filter((name) => typeof name === "string").map(matchKey),
+    want,
+  );
+  const others = titleTexts(result)
+    .filter((name) => name !== result.name)
+    .map(matchKey);
+  return Math.min(own, rankAgainst(others, want) + 0.5);
 };
 
 // Pick what to show. Titles that really match what was typed come first (ties
@@ -374,7 +410,7 @@ const chooseSearchResults = (pools, query) => {
   const ranked = all
     .map((result, index) => ({ result, index, rank: matchRank(result, query) }))
     .sort((a, b) => a.rank - b.rank || a.index - b.index);
-  const strong = ranked.filter((item) => item.rank <= 3);
+  const strong = ranked.filter((item) => item.rank < 4);
   const words = query.trim().split(/\s+/).filter(Boolean);
   const chosen = strong.length ? strong : words.length <= 2 ? (pools[0] || []).map((result, index) => ({ result, index })) : [];
   return chosen.slice(0, SEARCH_RESULTS).map((item) => item.result);
