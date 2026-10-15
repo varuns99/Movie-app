@@ -61,6 +61,8 @@
 html {
   min-width: 320px;
   background: var(--bg);
+  /* Phones paint a blue box over whatever is tapped; the controls show their own press effect instead. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -740,14 +742,34 @@ input[type="range"] {
 
 .movie-card {
   cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 140ms ease;
 }
 
 .movie-card .poster-wrap img {
-  transition: filter 150ms ease;
+  transition: filter 140ms ease;
 }
 
 .movie-card:hover .poster-wrap img {
   filter: brightness(1.1);
+}
+
+/* The press: the card sinks a little and its poster dims, on touch and with a mouse. */
+.movie-card:active {
+  transform: scale(0.985);
+}
+
+.movie-card:active .poster-wrap img {
+  filter: brightness(0.82);
+}
+
+/* Pressing one of the card's own buttons should not also sink the whole card. */
+.movie-card:has(button:active) {
+  transform: none;
+}
+
+.movie-card:has(button:active) .poster-wrap img {
+  filter: none;
 }
 
 .movie-card .card-actions {
