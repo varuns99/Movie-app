@@ -328,7 +328,6 @@ h3 {
 }
 
 .best-card p,
-.synopsis,
 .empty-state p {
   color: var(--muted);
   line-height: 1.55;
@@ -541,16 +540,6 @@ input[type="range"] {
   padding: 0 1rem;
 }
 
-.movie-content .card-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-}
-
-.movie-content .card-actions button {
-  padding: 0 0.5rem;
-}
-
 .remove-button {
   color: var(--danger);
   border-color: transparent;
@@ -732,15 +721,98 @@ input[type="range"] {
 .movie-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.5rem 1rem;
-  align-items: start;
+  column-gap: 1rem;
+  row-gap: 0;
 }
 
-/* Poster-led card: the poster is the card, everything else sits below it. */
+/*
+  Poster-led card. Each part of a card sits in its own row, and where the browser
+  supports subgrid the six rows are shared by every card in a grid row, so
+  titles, years, ratings and buttons line up exactly across the cards.
+  Without subgrid the cards simply stretch and keep their buttons at the bottom.
+*/
 .movie-card {
-  display: grid;
-  gap: 0.7rem;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  padding-bottom: 1.75rem;
+}
+
+.movie-card .card-actions {
+  margin-top: auto;
+  padding-top: 0.75rem;
+}
+
+@supports (grid-template-rows: subgrid) {
+  .movie-card {
+    display: grid;
+    grid-row: span 6;
+    grid-template-rows: subgrid;
+    row-gap: 0;
+  }
+
+  .movie-card .card-actions {
+    margin-top: 0;
+  }
+
+  .movie-card > .poster-wrap {
+    grid-row: 1;
+  }
+
+  .movie-card > .card-title {
+    grid-row: 2;
+  }
+
+  .movie-card > .card-alt {
+    grid-row: 3;
+  }
+
+  .movie-card > .card-meta {
+    grid-row: 4;
+  }
+
+  .movie-card > .card-rating {
+    grid-row: 5;
+  }
+
+  .movie-card > .card-actions {
+    grid-row: 6;
+  }
+}
+
+.card-title {
+  margin-top: 0.7rem;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.movie-card .card-alt {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.card-meta {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.card-rating {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 0.45rem;
 }
 
 .poster-wrap {
@@ -768,24 +840,6 @@ input[type="range"] {
   font-weight: 600;
 }
 
-.movie-content {
-  display: grid;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.movie-title-row h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.movie-title-row p {
-  margin: 0.2rem 0 0;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
 .status {
   color: var(--muted);
 }
@@ -802,11 +856,6 @@ input[type="range"] {
   gap: 0.15rem 0.6rem;
   color: var(--muted);
   font-size: 0.85rem;
-}
-
-.synopsis {
-  margin: 0;
-  font-size: 0.9rem;
 }
 
 .meta-row {
@@ -837,39 +886,6 @@ input[type="range"] {
   color: var(--danger);
   font-size: 0.8rem;
   line-height: 1.35;
-}
-
-.card-details {
-  border-top: 1px solid var(--line);
-}
-
-.card-details summary {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  color: var(--muted);
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  list-style: none;
-}
-
-.card-details summary::-webkit-details-marker {
-  display: none;
-}
-
-.card-details summary:hover {
-  color: var(--ink);
-}
-
-.card-details[open] summary {
-  color: var(--ink);
-}
-
-.card-details-body {
-  display: grid;
-  gap: 0.7rem;
-  padding-bottom: 0.5rem;
 }
 
 .history-list {
@@ -1609,8 +1625,7 @@ input[type="range"] {
   line-height: 1.3;
 }
 
-.best-card p.alt-title,
-.movie-title-row p.alt-title {
+.best-card p.alt-title {
   margin: 0.15rem 0 0;
   color: var(--faint);
   font-size: 0.85rem;
@@ -1752,4 +1767,38 @@ body {
   color: var(--muted);
   font-size: 0.85rem;
   text-align: center;
+}
+
+/* ---------- Card buttons and the View window ---------- */
+
+/* Two equal buttons side by side on every screen. minmax(0, 1fr) keeps the
+   columns the same width whatever the text ("Mark watched" wraps onto two lines
+   on narrow cards, so the buttons stay equal and the same height). */
+.card-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.card-buttons button {
+  padding: 0 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.1;
+}
+
+.view-details {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.view-details p {
+  margin: 0;
+}
+
+.view-details .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
 }

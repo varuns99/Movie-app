@@ -28,7 +28,6 @@ import {
 import { ChipSelect } from "./ChipSelect";
 import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
-import { ImdbLink } from "./ImdbLink";
 import { listSummary, yearSummary } from "./filterText";
 import { altTitle, titleKey } from "./titles";
 import { normalizeTrailerUrl } from "./trailers";
@@ -302,6 +301,7 @@ function App() {
   }, [passwordRecovery]);
   const [trailerMovie, setTrailerMovie] = useState<{ title: string; trailerUrl?: string } | null>(null);
   const [ratingMovie, setRatingMovie] = useState<Movie | null>(null);
+  const [viewMovieId, setViewMovieId] = useState<string | null>(null);
   const [filters, setFilters] = useState<RouletteFilters>(DEFAULT_ROULETTE_FILTERS);
   const [watchlistFilters, setWatchlistFilters] = useState<WatchlistFilters>(DEFAULT_WATCHLIST_FILTERS);
 
@@ -426,6 +426,7 @@ function App() {
   const roulette = useRoulette(rouletteMovies);
   const selectedMovie = roulette.selectedId ? movies.find((movie) => movie.id === roulette.selectedId) : undefined;
   const pick = usePickWindow(roulette.selectedId);
+  const viewMovie = viewMovieId ? movies.find((movie) => movie.id === viewMovieId) : undefined;
   const watchedMovies = useMemo(
     () =>
       movies
@@ -516,13 +517,14 @@ function App() {
     });
   };
 
-  const removeMovie = (movieId: string) => {
+  const removeMovie = (movieId: string, onRemoved?: () => void) => {
     const movie = movies.find((item) => item.id === movieId);
     if (!movie) return;
     if (!window.confirm(`Remove "${movie.title}" from the watchlist? This also deletes its ratings and history.`)) {
       return;
     }
     setActionError("");
+    onRemoved?.();
     cloudMovies.remove(movieId).then(reportFailure);
   };
 
@@ -890,9 +892,7 @@ function App() {
                         movie={movie}
                         score={matchScore(movie, profile)}
                         members={members}
-                        onTrailer={() => setTrailerMovie(movie)}
-                        onRate={() => setRatingMovie(movie)}
-                        onRemove={() => removeMovie(movie.id)}
+                        onView={() => setViewMovieId(movie.id)}
                         onToggleWatched={() =>
                           updateMovie(movie.id, (current) => ({
                             ...current,
@@ -1000,6 +1000,43 @@ function App() {
         />
       )}
       {!splashDone && <SplashScreen ready={!authLoading} onDone={finishSplash} />}
+      {viewMovie && (
+        <PickWindow
+          heading="Movie details"
+          title={viewMovie.title}
+          altTitle={altTitle(viewMovie.title, viewMovie.englishTitle)}
+          posterUrl={viewMovie.posterUrl}
+          imdbId={viewMovie.imdbId}
+          meta={`${viewMovie.year} · ${viewMovie.runtime} min`}
+          details={
+            <div className="view-details">
+              {viewMovie.genres.length > 0 && <p className="chip-row">{viewMovie.genres.join(" · ")}</p>}
+              <RatingSummary movie={viewMovie} members={members} />
+              <p className="meta-row">
+                <span>Added by {memberNameOf(members, viewMovie.addedBy)}</span>
+                {viewMovie.language && <span>{languageName(viewMovie.language)}</span>}
+                {viewMovie.moods.length > 0 && <span>{viewMovie.moods.map((mood) => moodLabels[mood]).join(", ")}</span>}
+              </p>
+            </div>
+          }
+          synopsis={viewMovie.synopsis}
+          onClose={() => setViewMovieId(null)}
+        >
+          <button className="primary-button" onClick={() => setRatingMovie(viewMovie)}>
+            Rate
+          </button>
+          {normalizeTrailerUrl(viewMovie.trailerUrl) && <button onClick={() => setTrailerMovie(viewMovie)}>Trailer</button>}
+          <button
+            className="remove-button"
+            onClick={() => {
+              const id = viewMovie.id;
+              removeMovie(id, () => setViewMovieId(null));
+            }}
+          >
+            Remove
+          </button>
+        </PickWindow>
+      )}
       {trailerMovie && <TrailerModal movie={trailerMovie} onClose={() => setTrailerMovie(null)} />}
       {ratingMovie && (
         <RatingModal
@@ -1103,20 +1140,43 @@ function AddMovieBar({
   );
 }
 
+// Who rated what, the average, and a note while someone's rating is still missing.
+function RatingSummary({ movie, members }: { movie: Movie; members: Member[] }) {
+  if (movie.status !== "watched") return null;
+  const avg = averageRating(movie);
+  const progress = ratingProgress(movie, members);
+  const pending = !progress.complete;
+  return (
+    <>
+      <div className="rating-summary">
+        {members.map((member) => (
+          <span key={member.id}>
+            {member.displayName} {movie.ratings[member.id]?.score ?? "-"}
+          </span>
+        ))}
+        <strong className={pending ? "pending" : undefined}>
+          Avg {avg ? avg.toFixed(1) : "-"}
+          {pending ? "*" : ""}
+        </strong>
+      </div>
+      {pending && <small className="rating-pending">* Waiting for {progress.waitingFor.join(" and ")} to rate</small>}
+    </>
+  );
+}
+
 type MovieCardProps = {
   movie: Movie;
   score: number;
   members: Member[];
-  onTrailer: () => void;
-  onRate: () => void;
-  onRemove: () => void;
+  onView: () => void;
   onToggleWatched: () => void;
 };
 
-function MovieCard({ movie, score, members, onTrailer, onRate, onRemove, onToggleWatched }: MovieCardProps) {
-  const avg = averageRating(movie);
-  const progress = ratingProgress(movie, members);
-  const pending = movie.status === "watched" && !progress.complete;
+// Every part of the card sits in its own row so that, across a row of cards, the
+// titles, years, ratings and buttons line up exactly (see .movie-card in the styles).
+function MovieCard({ movie, score, members, onView, onToggleWatched }: MovieCardProps) {
+  const pending = movie.status === "watched" && !ratingProgress(movie, members).complete;
+  const alt = altTitle(movie.title, movie.englishTitle);
   return (
     <article className="movie-card">
       <div className="poster-wrap">
@@ -1125,61 +1185,23 @@ function MovieCard({ movie, score, members, onTrailer, onRate, onRemove, onToggl
           {score}%{pending ? "*" : ""}
         </span>
       </div>
-      <div className="movie-content">
-        <div className="movie-title-row">
-          <h3>{movie.title}</h3>
-          {altTitle(movie.title, movie.englishTitle) && (
-            <p className="alt-title">({altTitle(movie.title, movie.englishTitle)})</p>
-          )}
-          <p>
-            {movie.year} · {movie.runtime} min
-          </p>
-          <ImdbLink imdbId={movie.imdbId} />
+      <h3 className="card-title">{movie.title}</h3>
+      {alt && <p className="alt-title card-alt">({alt})</p>}
+      <p className="card-meta">
+        {movie.year} · {movie.runtime} min
+      </p>
+      {movie.status === "watched" && (
+        <div className="card-rating">
+          <RatingSummary movie={movie} members={members} />
         </div>
-        {movie.status === "watched" && (
-          <div className="rating-summary">
-            {members.map((member) => (
-              <span key={member.id}>
-                {member.displayName} {movie.ratings[member.id]?.score ?? "-"}
-              </span>
-            ))}
-            <strong className={pending ? "pending" : undefined}>
-              Avg {avg ? avg.toFixed(1) : "-"}
-              {pending ? "*" : ""}
-            </strong>
-          </div>
-        )}
-        {pending && <small className="rating-pending">* Waiting for {progress.waitingFor.join(" and ")} to rate</small>}
-        <div className="card-actions">
-          <button onClick={onRate}>Rate</button>
+      )}
+      <div className="card-actions">
+        <div className="card-buttons">
+          <button onClick={onView}>View</button>
           <button className={movie.status === "watched" ? "status watched" : "status"} onClick={onToggleWatched}>
-            {movie.status === "watched" ? "Watched" : "Seen it"}
+            {movie.status === "watched" ? "Watched" : "Mark watched"}
           </button>
         </div>
-        <details className="card-details">
-          <summary>Details</summary>
-          <div className="card-details-body">
-            <div className="chip-row">
-              {movie.genres.map((genre) => (
-                <span key={genre}>{genre}</span>
-              ))}
-            </div>
-            <p className="synopsis">{movie.synopsis}</p>
-            <div className="meta-row">
-              <span>Added by {memberNameOf(members, movie.addedBy)}</span>
-              {movie.language && <span>{languageName(movie.language)}</span>}
-              <span>{movie.moods.map((mood) => moodLabels[mood]).join(", ")}</span>
-            </div>
-            <div className="card-actions">
-              <button disabled={!movie.trailerUrl} onClick={onTrailer}>
-                Trailer
-              </button>
-              <button className="remove-button" onClick={onRemove}>
-                Remove
-              </button>
-            </div>
-          </div>
-        </details>
       </div>
     </article>
   );
