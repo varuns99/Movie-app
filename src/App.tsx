@@ -35,6 +35,7 @@ import { LockedFeature } from "./LockedFeature";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
 import { RouletteStrip } from "./RouletteStrip";
+import { SegmentedToggle } from "./SegmentedToggle";
 import { SplashScreen } from "./SplashScreen";
 import { YearRange } from "./YearRange";
 import { useInstallPrompt } from "./useInstallPrompt";
@@ -60,6 +61,24 @@ const readCheckedLanguages = () => {
     return new Set<string>(JSON.parse(window.localStorage.getItem(LANGUAGE_CHECK_KEY) ?? "[]") as string[]);
   } catch {
     return new Set<string>();
+  }
+};
+
+type TonightMode = "recommendation" | "roulette" | "discover";
+const TONIGHT_MODE_KEY = "two-seats:tonight-mode";
+const tonightModes: { value: TonightMode; label: string }[] = [
+  { value: "recommendation", label: "Recommendation" },
+  { value: "roulette", label: "Roulette" },
+  { value: "discover", label: "Discover" },
+];
+
+// Remembers which of the three Tonight views the person last used on this device.
+const readTonightMode = (): TonightMode => {
+  try {
+    const saved = window.localStorage.getItem(TONIGHT_MODE_KEY);
+    return tonightModes.some((mode) => mode.value === saved) ? (saved as TonightMode) : "recommendation";
+  } catch {
+    return "recommendation";
   }
 };
 
@@ -302,6 +321,19 @@ function App() {
   const [trailerMovie, setTrailerMovie] = useState<{ title: string; trailerUrl?: string } | null>(null);
   const [ratingMovie, setRatingMovie] = useState<Movie | null>(null);
   const [viewMovieId, setViewMovieId] = useState<string | null>(null);
+  const [tonightMode, setTonightModeState] = useState<TonightMode>(readTonightMode);
+  // Discover keeps its filters and list while you look at the other views, so it is
+  // built on first visit and then only hidden.
+  const [discoverVisited, setDiscoverVisited] = useState(() => readTonightMode() === "discover");
+  const setTonightMode = (mode: TonightMode) => {
+    setTonightModeState(mode);
+    if (mode === "discover") setDiscoverVisited(true);
+    try {
+      window.localStorage.setItem(TONIGHT_MODE_KEY, mode);
+    } catch {
+      // Remembering the choice is a convenience only.
+    }
+  };
   const [filters, setFilters] = useState<RouletteFilters>(DEFAULT_ROULETTE_FILTERS);
   const [watchlistFilters, setWatchlistFilters] = useState<WatchlistFilters>(DEFAULT_WATCHLIST_FILTERS);
 
@@ -615,14 +647,27 @@ function App() {
               onAdd={addMovie}
             />
 
-            <div className="tonight-grid">
+            <SegmentedToggle
+              label="Tonight"
+              options={tonightModes}
+              value={tonightMode}
+              onChange={setTonightMode}
+            />
+
+            {tonightMode === "recommendation" && (
               <div className="tonight-main">
                 <p className="room-status">
                   {unwatchedCount} maybes · {watchedMovies.length} watched
                 </p>
 
                 {bestTonight ? (
-                  <article className="best-card">
+                  // Tapping the card opens the movie's details, like the Watchlist cards.
+                  <article
+                    className="best-card"
+                    onClick={(event) => {
+                      if (!(event.target as HTMLElement).closest("button, a")) setViewMovieId(bestTonight.id);
+                    }}
+                  >
                     <img src={bestTonight.posterUrl} alt="" />
                     <div className="best-body">
                       <h2>Best for us tonight</h2>
@@ -631,8 +676,8 @@ function App() {
                         {bestTonight.runtime} min · {bestTonight.genres.slice(0, 2).join(", ")}
                       </p>
                       <span className="score">{matchScore(bestTonight, profile)}% match</span>
-                      <button className="primary-button" onClick={spinRoulette}>
-                        Spin with this vibe
+                      <button className="best-view" onClick={() => setViewMovieId(bestTonight.id)}>
+                        View
                       </button>
                     </div>
                   </article>
@@ -647,7 +692,9 @@ function App() {
                   />
                 )}
               </div>
+            )}
 
+            {tonightMode === "roulette" && (
               <section className="panel roulette-panel">
                 <div className="section-heading">
                   <h2>Let the room choose</h2>
@@ -769,7 +816,17 @@ function App() {
                   </PickWindow>
                 )}
               </section>
-            </div>
+            )}
+
+            {discoverVisited && (
+              <div hidden={tonightMode !== "discover"}>
+                <DiscoverView
+                  saved={movies}
+                  onSave={(candidate) => (user ? cloudMovies.add(candidate, user.id) : Promise.resolve({ ok: false as const, message: "Sign in to add movies." }))}
+                  onTrailer={setTrailerMovie}
+                />
+              </div>
+            )}
           </>
         )}
 
@@ -957,23 +1014,20 @@ function App() {
           </section>
         )}
       </main>
-      {(installApp.canInstall || installApp.iosHint) && (
-        <div className="install-row">
-          {installApp.canInstall ? (
-            <button type="button" onClick={installApp.install}>
-              Install app
-            </button>
-          ) : (
-            <p>To install: tap Share, then Add to Home Screen.</p>
-          )}
-        </div>
-      )}
-      <footer className="credits">
-        Movie data from{" "}
-        <a href="https://thetvdb.com" target="_blank" rel="noreferrer">
-          TheTVDB.com
-        </a>
-        . This product is not endorsed or certified by TheTVDB.
+      <footer className="site-footer">
+        <p>
+          Movie data from{" "}
+          <a href="https://thetvdb.com" target="_blank" rel="noreferrer">
+            TheTVDB.com
+          </a>
+          . This product is not endorsed or certified by TheTVDB.
+        </p>
+        {installApp.canInstall && (
+          <button type="button" onClick={installApp.install}>
+            Install app
+          </button>
+        )}
+        {!installApp.canInstall && installApp.iosHint && <p>To install: tap Share, then Add to Home Screen.</p>}
       </footer>
 
       {manualOpen && <ManualMovieModal onClose={() => setManualOpen(false)} onAdd={addMovie} />}
@@ -1096,44 +1150,42 @@ function AddMovieBar({
           </button>
         )}
       </div>
-      <div className="search-meta">
-        <button type="button" className="link-button" onClick={onManual}>
-          + Add manually
-        </button>
-        <span className="proxy-status">{hasMovieProxy ? "Live search" : "Demo search"}</span>
-      </div>
-
       {query && (
         <div className="search-dropdown">
-          {searchLoading && <p className="dropdown-state">Checking the shelves...</p>}
-          {searchError && <p className="dropdown-state error">{searchError}</p>}
-          {!searchLoading && !searchResults.length && (
-            <p className="dropdown-state">
-              Nothing surfaced.{" "}
-              <button type="button" className="link-button" onClick={onManual}>
-                Add it manually
-              </button>
-              .
-            </p>
-          )}
-          {searchResults.map((movie) => {
-            const alreadyAdded = movies.some((item) => item.title.toLowerCase() === movie.title.toLowerCase());
-            return (
-              <article key={`${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
-                <img src={movie.posterUrl} alt="" />
-                <div>
-                  <h3>{movie.title}</h3>
-                  <p>
-                    {movie.year} • {movie.runtime} min
-                  </p>
-                  <small>{movie.genres.join(" / ")}</small>
-                </div>
-                <button disabled={alreadyAdded} onClick={() => onAdd(movie)}>
-                  {alreadyAdded ? "Added" : "Add"}
-                </button>
-              </article>
-            );
-          })}
+          <div className="dropdown-head">
+            <span className={hasMovieProxy ? "live-status" : "live-status demo"}>
+              <span className="live-dot" aria-hidden="true" />
+              {hasMovieProxy ? "Live search" : "Demo search"}
+            </span>
+          </div>
+          <div className="dropdown-list">
+            {searchLoading && <p className="dropdown-state">Checking the shelves...</p>}
+            {searchError && <p className="dropdown-state error">{searchError}</p>}
+            {!searchLoading && !searchResults.length && (
+              <p className="dropdown-state">Nothing surfaced. Try another spelling, or add it manually below.</p>
+            )}
+            {searchResults.map((movie) => {
+              const alreadyAdded = movies.some((item) => item.title.toLowerCase() === movie.title.toLowerCase());
+              return (
+                <article key={`${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
+                  <img src={movie.posterUrl} alt="" />
+                  <div>
+                    <h3>{movie.title}</h3>
+                    <p>
+                      {movie.year} • {movie.runtime} min
+                    </p>
+                    <small>{movie.genres.join(" / ")}</small>
+                  </div>
+                  <button disabled={alreadyAdded} onClick={() => onAdd(movie)}>
+                    {alreadyAdded ? "Added" : "Add"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+          <button type="button" className="add-manual-strip" onClick={onManual}>
+            + Add manually
+          </button>
         </div>
       )}
     </section>

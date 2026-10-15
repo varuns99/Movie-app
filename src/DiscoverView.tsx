@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ALL_YEARS,
   DISCOVER_GENRES,
@@ -16,23 +16,31 @@ import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
 import { LockedFeature } from "./LockedFeature";
 import { listSummary, yearSummary } from "./filterText";
-import { altTitle } from "./titles";
+import { altTitle, titleKey } from "./titles";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
 import { RouletteStrip } from "./RouletteStrip";
 import { YearRange } from "./YearRange";
 import { useRoulette } from "./useRoulette";
-import type { MovieCandidate } from "./types";
+import type { ActionResult } from "./cloudData";
+import type { Movie, MovieCandidate } from "./types";
 
 type Props = {
+  // Signed out: how to open sign-in (the watchlist features are locked).
   onSignIn?: () => void;
   onTrailer: (movie: { title: string; trailerUrl?: string }) => void;
+  // Signed in: the room's watchlist, so films already on it are left out, and how to add a pick to it.
+  saved?: Movie[];
+  onSave?: (movie: MovieCandidate) => Promise<ActionResult>;
 };
 
 type LoadState = "loading" | "ready" | "error";
 
-// The signed-out Tonight screen: pick filters, spin, get a movie. No watchlist needed.
-export function DiscoverView({ onSignIn, onTrailer }: Props) {
+// Pick filters, spin, get a movie from the whole catalogue. Signed out this is the
+// Tonight screen; signed in it is "Discover": new films only, never ones already
+// on the watchlist, and a pick can be added to it.
+export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
+  const signedIn = Boolean(onSave);
   const [filters, setFilters] = useState<DiscoverFilters>(defaultDiscoverFilters);
   const [movies, setMovies] = useState<MovieCandidate[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -41,6 +49,28 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
   const [verifying, setVerifying] = useState(false);
   const [details, setDetails] = useState<MovieCandidate | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [addedTitle, setAddedTitle] = useState("");
+
+  // Films already on the watchlist, matched by TVDB id, or by title and year for ones added by hand.
+  const savedKeys = useMemo(() => {
+    const list = saved ?? [];
+    const keys = new Set<string>();
+    list.forEach((movie) => {
+      if (movie.tvdbId) keys.add(`id:${movie.tvdbId}`);
+      keys.add(`t:${titleKey(movie.title)}|${movie.year}`);
+      if (movie.englishTitle) keys.add(`t:${titleKey(movie.englishTitle)}|${movie.year}`);
+    });
+    return keys;
+  }, [saved]);
+  const isSaved = useMemo(
+    () => (movie: MovieCandidate) =>
+      Boolean(movie.tvdbId && savedKeys.has(`id:${movie.tvdbId}`)) || savedKeys.has(`t:${titleKey(movie.title)}|${movie.year}`),
+    [savedKeys],
+  );
+  const isSavedRef = useRef(isSaved);
+  isSavedRef.current = isSaved;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -48,7 +78,7 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
     setVerifying(false);
     const timeout = window.setTimeout(async () => {
       try {
-        const result = await discoverMovies(filters, controller.signal);
+        const result = await discoverMovies(filters, controller.signal, signedIn ? isSavedRef.current : undefined);
         setMovies(result.movies);
         setSample(result.sample);
         setLoadState("ready");
@@ -72,9 +102,13 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [filters, attempt]);
+  }, [filters, attempt, signedIn]);
 
-  const items = useMemo(() => movies.map((movie) => ({ ...movie, id: String(movie.tvdbId ?? movie.title) })), [movies]);
+  // Anything added to the watchlist since the list loaded drops out at once.
+  const items = useMemo(
+    () => movies.filter((movie) => !signedIn || !isSaved(movie)).map((movie) => ({ ...movie, id: String(movie.tvdbId ?? movie.title) })),
+    [movies, signedIn, isSaved],
+  );
   const roulette = useRoulette(items);
   const selected = items.find((item) => item.id === roulette.selectedId);
   const pick = usePickWindow(roulette.selectedId);
@@ -107,7 +141,7 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
   return (
     <section className="panel roulette-panel discover">
       <div className="section-heading">
-        <h2>Find tonight&apos;s movie</h2>
+        <h2>{signedIn ? "Discover something new" : "Find tonight's movie"}</h2>
         <span>{loadState === "ready" ? `${items.length} to spin` : ""}</span>
       </div>
 
@@ -130,24 +164,26 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
                 ))}
               </select>
             </label>
-            <div className="toggle-row locked-toggle-row">
-              <LockedFeature
-                className="locked-toggle"
-                title="Sign in to filter by unwatched"
-                body="This uses your shared watchlist, so you only spin movies you haven't seen yet."
-                onSignIn={
-                  onSignIn
-                    ? () => {
-                        close();
-                        onSignIn();
-                      }
-                    : undefined
-                }
-              >
-                <span className="fake-check" aria-hidden="true" />
-                Only unwatched
-              </LockedFeature>
-            </div>
+            {!signedIn && (
+              <div className="toggle-row locked-toggle-row">
+                <LockedFeature
+                  className="locked-toggle"
+                  title="Sign in to filter by unwatched"
+                  body="This uses your shared watchlist, so you only spin movies you haven't seen yet."
+                  onSignIn={
+                    onSignIn
+                      ? () => {
+                          close();
+                          onSignIn();
+                        }
+                      : undefined
+                  }
+                >
+                  <span className="fake-check" aria-hidden="true" />
+                  Only unwatched
+                </LockedFeature>
+              </div>
+            )}
             <YearRange
               from={draft.yearFrom}
               to={draft.yearTo}
@@ -210,13 +246,26 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
               spinning={roulette.spinning}
               tileRefs={roulette.tileRefs}
             />
-            <button className="spin-button" disabled={roulette.spinning || verifying} onClick={roulette.spin}>
+            <button
+              className="spin-button"
+              disabled={roulette.spinning || verifying}
+              onClick={() => {
+                setAddedTitle("");
+                setSaveError("");
+                roulette.spin();
+              }}
+            >
               {roulette.spinning ? "Choosing..." : verifying ? "Checking languages..." : "Spin roulette"}
             </button>
             {selected && !pick.open && (
               <button type="button" className="link-button view-pick" onClick={pick.show}>
                 View tonight&apos;s pick
               </button>
+            )}
+            {addedTitle && (
+              <p className="discover-note added-note" role="status">
+                Added &ldquo;{addedTitle}&rdquo; to your watchlist.
+              </p>
             )}
             {sample && <p className="discover-note">Showing sample picks. Live movie search isn&apos;t set up here.</p>}
           </>
@@ -237,20 +286,47 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
           {details.trailerUrl && (
             <button onClick={() => onTrailer({ title: details.title, trailerUrl: details.trailerUrl })}>Trailer</button>
           )}
-          <LockedFeature
-            title="Sign in to save movies"
-            body="Add this to your shared watchlist, rate it together and keep a history."
-            onSignIn={
-              onSignIn
-                ? () => {
-                    pick.close();
-                    onSignIn();
-                  }
-                : undefined
-            }
-          >
-            Save to watchlist
-          </LockedFeature>
+          {signedIn ? (
+            <button
+              className="primary-button"
+              disabled={saving}
+              onClick={async () => {
+                if (!onSave) return;
+                setSaving(true);
+                setSaveError("");
+                const result = await onSave(details);
+                setSaving(false);
+                if (result.ok) {
+                  setAddedTitle(details.title);
+                  pick.close();
+                } else {
+                  setSaveError(result.message);
+                }
+              }}
+            >
+              {saving ? "Adding..." : "Add to watchlist"}
+            </button>
+          ) : (
+            <LockedFeature
+              title="Sign in to save movies"
+              body="Add this to your shared watchlist, rate it together and keep a history."
+              onSignIn={
+                onSignIn
+                  ? () => {
+                      pick.close();
+                      onSignIn();
+                    }
+                  : undefined
+              }
+            >
+              Save to watchlist
+            </LockedFeature>
+          )}
+          {saveError && (
+            <p className="auth-message error" role="alert">
+              {saveError}
+            </p>
+          )}
         </PickWindow>
       )}
 

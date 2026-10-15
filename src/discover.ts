@@ -158,9 +158,16 @@ const filterDemoCatalog = (filters: DiscoverFilters) => {
 
 export type DiscoverResult = { movies: MovieCandidate[]; sample: boolean };
 
-export const discoverMovies = async (filters: DiscoverFilters, signal?: AbortSignal): Promise<DiscoverResult> => {
+// `exclude` drops films before the pool is cut to size, so excluded films never
+// take up one of its places (used to leave out what is already on a watchlist).
+export const discoverMovies = async (
+  filters: DiscoverFilters,
+  signal?: AbortSignal,
+  exclude?: (movie: MovieCandidate) => boolean,
+): Promise<DiscoverResult> => {
+  const keep = (movie: MovieCandidate) => !exclude?.(movie);
   if (!hasMovieProxy || !movieProxyUrl) {
-    return { movies: shuffle(filterDemoCatalog(filters)), sample: true };
+    return { movies: shuffle(filterDemoCatalog(filters).filter(keep)), sample: true };
   }
 
   const url = new URL("/discover", movieProxyUrl);
@@ -181,7 +188,7 @@ export const discoverMovies = async (filters: DiscoverFilters, signal?: AbortSig
     ...movie,
     posterUrl: movie.posterUrl?.startsWith("/") ? placeholderPosterUrl : movie.posterUrl || placeholderPosterUrl,
   }));
-  return { movies: shuffle(movies).slice(0, POOL_SIZE), sample: false };
+  return { movies: shuffle(movies.filter(keep)).slice(0, POOL_SIZE), sample: false };
 };
 
 const VERIFY_WAIT_MS = 5000;
