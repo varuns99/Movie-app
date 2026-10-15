@@ -738,6 +738,18 @@ input[type="range"] {
   padding-bottom: 1.75rem;
 }
 
+.movie-card {
+  cursor: pointer;
+}
+
+.movie-card .poster-wrap img {
+  transition: filter 150ms ease;
+}
+
+.movie-card:hover .poster-wrap img {
+  filter: brightness(1.1);
+}
+
 .movie-card .card-actions {
   margin-top: auto;
   padding-top: 0.75rem;

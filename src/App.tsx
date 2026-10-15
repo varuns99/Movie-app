@@ -1178,7 +1178,14 @@ function MovieCard({ movie, score, members, onView, onToggleWatched }: MovieCard
   const pending = movie.status === "watched" && !ratingProgress(movie, members).complete;
   const alt = altTitle(movie.title, movie.englishTitle);
   return (
-    <article className="movie-card">
+    // Tapping anywhere on the card opens the same window as View, except on the buttons.
+    // (Keyboard users have the View button.)
+    <article
+      className="movie-card"
+      onClick={(event) => {
+        if (!(event.target as HTMLElement).closest("button, a")) onView();
+      }}
+    >
       <div className="poster-wrap">
         <img src={movie.posterUrl} alt="" loading="lazy" />
         <span>
