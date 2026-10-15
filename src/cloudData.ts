@@ -143,6 +143,7 @@ type MovieRow = {
   trailer_url: string | null;
   language: string | null;
   english_title: string | null;
+  imdb_id: string | null;
   added_by: string;
   added_at: string;
   status: WatchStatus;
@@ -164,6 +165,7 @@ const toMovie = (row: MovieRow): Movie => ({
   trailerUrl: normalizeTrailerUrl(row.trailer_url),
   language: row.language ?? undefined,
   englishTitle: row.english_title ?? undefined,
+  imdbId: row.imdb_id ?? undefined,
   addedBy: row.added_by,
   addedAt: row.added_at,
   status: row.status,
@@ -236,6 +238,7 @@ export const useCloudMovies = (roomId: string | null) => {
             trailer_url: candidate.trailerUrl ?? null,
             language: candidate.language ?? null,
             english_title: candidate.englishTitle ?? null,
+            imdb_id: candidate.imdbId ?? null,
             added_by: userId,
           })
           .select("*")
@@ -285,12 +288,16 @@ export const useCloudMovies = (roomId: string | null) => {
   // Movie facts the movie service can fill in after the fact (original language,
   // English title). Only the fields given are written.
   const updateInfo = useCallback(
-    async (movieId: string, patch: { language?: string; englishTitle?: string; title?: string }): Promise<ActionResult> => {
+    async (
+      movieId: string,
+      patch: { language?: string; englishTitle?: string; title?: string; imdbId?: string },
+    ): Promise<ActionResult> => {
       if (!supabase) return NOT_SET_UP;
-      const columns: { language?: string; english_title?: string; title?: string } = {};
+      const columns: { language?: string; english_title?: string; title?: string; imdb_id?: string } = {};
       if (patch.language) columns.language = patch.language;
       if (patch.englishTitle) columns.english_title = patch.englishTitle;
       if (patch.title) columns.title = patch.title;
+      if (patch.imdbId) columns.imdb_id = patch.imdbId;
       if (!Object.keys(columns).length) return { ok: true };
       try {
         const { error: updateError } = await supabase.from("movies").update(columns).eq("id", movieId);

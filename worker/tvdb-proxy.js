@@ -247,6 +247,13 @@ const withCheckedLanguages = async (candidates) => {
   };
 };
 
+// TVDB lists external ids on each film; the IMDb one ("tt0066461") lets the app
+// link to the film's IMDb page. Anything that is not a plain IMDb title id is ignored.
+const imdbIdFrom = (remoteIds) => {
+  const id = (remoteIds || []).find((remote) => String(remote.sourceName).toLowerCase().includes("imdb"))?.id;
+  return /^tt\d{6,10}$/.test(String(id || "")) ? String(id) : undefined;
+};
+
 const toCandidate = (result, extended) => {
   const genres = (extended.genres?.length ? extended.genres.map((genre) => genre.name) : result.genres || []).filter(
     Boolean,
@@ -272,6 +279,7 @@ const toCandidate = (result, extended) => {
     posterUrl: extended.image || result.image_url || result.poster || "/poster-placeholder.svg",
     trailerUrl: trailer,
     language: result.primary_language || extended.originalLanguage || undefined,
+    imdbId: imdbIdFrom(extended.remoteIds),
     searchTerms: Array.from(new Set(searchTerms)),
   };
 };

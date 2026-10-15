@@ -18,6 +18,8 @@
   --ink: #f2f2ef;
   --muted: #9a9ca3;
   --faint: #7f828a;
+  --yellow: #ffe97a;
+  --on-yellow: #2a2410;
   --line: rgba(255, 255, 255, 0.09);
   --line-strong: rgba(255, 255, 255, 0.18);
   --accent: #3ddc97;
@@ -1701,4 +1703,30 @@ input[type="range"] {
   .pick-poster {
     width: 100%;
   }
+}
+
+/* ---------- View on IMDb link ---------- */
+
+.imdb-link {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 30px;
+  margin-top: 0.35rem;
+  padding: 0 0.7rem;
+  border-radius: 8px;
+  color: var(--on-yellow);
+  background: var(--yellow);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.imdb-link:hover {
+  filter: brightness(0.94);
+}
+
+.imdb-link:active {
+  transform: scale(0.98);
 }

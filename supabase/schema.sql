@@ -51,6 +51,9 @@ alter table public.movies add column if not exists language text;
 -- title. Filled when a movie is added and for older movies on their next load.
 alter table public.movies add column if not exists english_title text;
 
+-- The film's IMDb title id ("tt0066461"), used only to link to its IMDb page.
+alter table public.movies add column if not exists imdb_id text;
+
 create index if not exists movies_room_id_idx on public.movies (room_id);
 
 create table if not exists public.ratings (

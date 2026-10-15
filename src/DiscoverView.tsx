@@ -228,6 +228,7 @@ export function DiscoverView({ onSignIn, onTrailer }: Props) {
           title={details.title}
           altTitle={altTitle(details.title, details.englishTitle)}
           posterUrl={details.posterUrl}
+          imdbId={details.imdbId}
           meta={[details.year, `${details.runtime} min`, details.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
           synopsis={details.synopsis}
           loadingSynopsis={detailsLoading}

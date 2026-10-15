@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ImdbLink } from "./ImdbLink";
 import { Modal } from "./Modal";
 
 // The roulette's result, shown in a window as soon as a spin lands. The whole
@@ -10,6 +11,8 @@ type Props = {
   posterUrl: string;
   // Year, runtime and genres, already joined for display.
   meta: string;
+  // IMDb title id; shows a small "View on IMDb" link under the year and runtime.
+  imdbId?: string;
   synopsis?: string;
   // True while the description is still being fetched.
   loadingSynopsis?: boolean;
@@ -18,7 +21,7 @@ type Props = {
   children?: ReactNode;
 };
 
-export function PickWindow({ title, altTitle, posterUrl, meta, synopsis, loadingSynopsis, onClose, children }: Props) {
+export function PickWindow({ title, altTitle, posterUrl, meta, imdbId, synopsis, loadingSynopsis, onClose, children }: Props) {
   return (
     <Modal title="Tonight's pick" onClose={onClose} centered>
       <div className="pick-window">
@@ -27,6 +30,7 @@ export function PickWindow({ title, altTitle, posterUrl, meta, synopsis, loading
           <h3>{title}</h3>
           {altTitle && <p className="alt-title">({altTitle})</p>}
           <p className="pick-meta">{meta}</p>
+          <ImdbLink imdbId={imdbId} />
           {synopsis ? (
             <p className="pick-synopsis">{synopsis}</p>
           ) : (

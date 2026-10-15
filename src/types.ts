@@ -39,6 +39,8 @@ export type Movie = {
   language?: string;
   // English title when it differs from `title` (the film's own name).
   englishTitle?: string;
+  // IMDb title id ("tt0066461"), used only to link to the film's IMDb page.
+  imdbId?: string;
   addedBy: MemberId;
   addedAt: string;
   status: WatchStatus;
@@ -61,6 +63,7 @@ export type MovieCandidate = {
   // Original language as a three-letter code ("eng", "jpn"); used by discovery filters.
   language?: string;
   englishTitle?: string;
+  imdbId?: string;
 };
 
 export type RouletteFilters = {

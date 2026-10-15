@@ -223,7 +223,7 @@ export const findLanguageMismatches = async (
 // asked, in which case the language is only TVDB's unconfirmed label.
 export const fetchMovieInfo = async (
   tvdbId: number,
-): Promise<{ title?: string; language?: string; englishTitle?: string; checked: boolean }> => {
+): Promise<{ title?: string; language?: string; englishTitle?: string; imdbId?: string; checked: boolean }> => {
   if (!movieProxyUrl) return { checked: false };
   try {
     const url = new URL("/movie", movieProxyUrl);
@@ -235,6 +235,7 @@ export const fetchMovieInfo = async (
       title: body.result?.title || undefined,
       language: body.result?.language || undefined,
       englishTitle: body.result?.englishTitle || undefined,
+      imdbId: body.result?.imdbId || undefined,
       checked: Boolean(body.result?.languageChecked),
     };
   } catch {

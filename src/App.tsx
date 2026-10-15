@@ -28,6 +28,7 @@ import {
 import { ChipSelect } from "./ChipSelect";
 import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
+import { ImdbLink } from "./ImdbLink";
 import { listSummary, yearSummary } from "./filterText";
 import { altTitle, titleKey } from "./titles";
 import { normalizeTrailerUrl } from "./trailers";
@@ -52,7 +53,7 @@ const moodLabels: Record<Mood, string> = {
 
 const todayIso = () => new Date().toISOString();
 
-const LANGUAGE_CHECK_KEY = "movie-night-roulette:movie-info-checked-v1";
+const LANGUAGE_CHECK_KEY = "movie-night-roulette:movie-info-checked-v2";
 
 const readCheckedLanguages = () => {
   try {
@@ -459,14 +460,15 @@ function App() {
       for (const movie of pending) {
         if (!movie.tvdbId) continue;
         const info = await fetchMovieInfo(movie.tvdbId);
-        if (!info.language && !info.englishTitle && !info.checked) continue; // Try again on a later visit.
+        if (!info.language && !info.englishTitle && !info.imdbId && !info.checked) continue; // Try again on a later visit.
 
-        const patch: { language?: string; englishTitle?: string; title?: string } = {};
+        const patch: { language?: string; englishTitle?: string; title?: string; imdbId?: string } = {};
         // An unconfirmed (TVDB-only) language may fill a gap but never overwrites a stored one.
         if (info.language && info.language !== movie.language && (info.checked || !movie.language)) {
           patch.language = info.language;
         }
         if (info.englishTitle && info.englishTitle !== movie.englishTitle) patch.englishTitle = info.englishTitle;
+        if (info.imdbId && info.imdbId !== movie.imdbId) patch.imdbId = info.imdbId;
         // Saved under its English name but the film has its own: use the film's own.
         if (info.title && info.englishTitle && titleKey(movie.title) === titleKey(info.englishTitle) && titleKey(info.title) !== titleKey(movie.title)) {
           patch.title = info.title;
@@ -740,6 +742,7 @@ function App() {
                     title={selectedMovie.title}
                     altTitle={altTitle(selectedMovie.title, selectedMovie.englishTitle)}
                     posterUrl={selectedMovie.posterUrl}
+                    imdbId={selectedMovie.imdbId}
                     meta={[selectedMovie.year, `${selectedMovie.runtime} min`, selectedMovie.genres.slice(0, 2).join(", ")]
                       .filter(Boolean)
                       .join(" · ")}
@@ -1118,6 +1121,7 @@ function MovieCard({ movie, score, members, onTrailer, onRate, onRemove, onToggl
           <p>
             {movie.year} · {movie.runtime} min
           </p>
+          <ImdbLink imdbId={movie.imdbId} />
         </div>
         {movie.status === "watched" && (
           <div className="rating-summary">
