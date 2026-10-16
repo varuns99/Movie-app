@@ -32,6 +32,7 @@ import { listSummary, yearSummary } from "./filterText";
 import { altTitle, titleKey } from "./titles";
 import { normalizeTrailerUrl } from "./trailers";
 import { LockedFeature } from "./LockedFeature";
+import { ProfileMenu } from "./ProfileMenu";
 import { TrailerButton } from "./TrailerButton";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
@@ -42,6 +43,7 @@ import { YearRange } from "./YearRange";
 import { rememberRelease, useReleaseStatus } from "./release";
 import { isUpcomingCandidate, releaseLabel } from "./releaseDates";
 import { useInstallPrompt } from "./useInstallPrompt";
+import { useSwipeNavigation } from "./useSwipeNavigation";
 import { useRoulette } from "./useRoulette";
 import type { Member, MemberId, Mood, Movie, MovieCandidate, RouletteFilters, TasteProfile } from "./types";
 
@@ -348,6 +350,32 @@ function App() {
   // signed-in person opening #watchlist is not bounced to Tonight.
   const activeView: View = user || authLoading ? view : "tonight";
 
+  // The section slides in from the side it is on (not for reduced motion, nor the first load).
+  const mainRef = useRef<HTMLElement>(null);
+  const shownView = useRef<View>(activeView);
+  useEffect(() => {
+    const previous = shownView.current;
+    shownView.current = activeView;
+    const main = mainRef.current;
+    if (previous === activeView || !main || typeof main.animate !== "function") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const from = views.indexOf(activeView) > views.indexOf(previous) ? 28 : -28;
+    main.animate(
+      [
+        { opacity: 0, transform: `translateX(${from}px)` },
+        { opacity: 1, transform: "none" },
+      ],
+      { duration: 240, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+    );
+  }, [activeView]);
+
+  // Swiping sideways moves between Tonight, Watchlist and History (only when signed in).
+  const swipe = useSwipeNavigation((direction) => {
+    if (!user) return;
+    const next = views[views.indexOf(activeView) + direction];
+    if (next) setView(next);
+  });
+
   useEffect(() => {
     if (window.location.hash.replace("#", "") !== activeView) {
       window.location.hash = activeView;
@@ -580,7 +608,7 @@ function App() {
   };
 
   return (
-    <div className="app-shell" inert={!splashDone}>
+    <div className="app-shell" inert={!splashDone} {...swipe}>
       <header className="topbar">
         <div className="brand">
           <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
@@ -594,15 +622,18 @@ function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          {hasSupabase && (
-            <button className={user ? "ghost-button" : "signin-button"} onClick={() => setAccountOpen(true)}>
-              {user ? "Account" : "Sign in"}
+          {hasSupabase && !user && (
+            <button className="signin-button" onClick={() => setAccountOpen(true)}>
+              Sign in
             </button>
           )}
           {user && (
-            <button className="ghost-button" onClick={() => setRoomOpen(true)}>
-              Room
-            </button>
+            <ProfileMenu
+              name={cloud.members.find((member) => member.userId === user.id)?.displayName ?? displayNameFor(user)}
+              email={user.email ?? ""}
+              onRoomSettings={() => setRoomOpen(true)}
+              onSignOut={() => void signOut()}
+            />
           )}
         </div>
       </header>
@@ -626,7 +657,7 @@ function App() {
         )}
       </nav>
 
-      <main className="view" aria-label={`${viewLabels[activeView]} view`}>
+      <main ref={mainRef} className="view" aria-label={`${viewLabels[activeView]} view`}>
         {actionError && (
           <p className="auth-message error" role="alert">
             {actionError}
@@ -1055,7 +1086,6 @@ function App() {
       {manualOpen && <ManualMovieModal onClose={() => setManualOpen(false)} onAdd={addMovie} />}
       {accountOpen && (
         <AccountModal
-          email={user?.email ?? null}
           recovering={passwordRecovery}
           onClose={() => {
             setAccountOpen(false);
@@ -1535,11 +1565,9 @@ function TrailerModal({ movie, onClose }: { movie: { title: string; trailerUrl?:
 }
 
 function AccountModal({
-  email,
   recovering,
   onClose,
 }: {
-  email: string | null;
   recovering: boolean;
   onClose: () => void;
 }) {
@@ -1592,33 +1620,6 @@ function AccountModal({
             </button>
           </div>
         </form>
-      </Modal>
-    );
-  }
-
-  if (email) {
-    return (
-      <Modal title="Your account" onClose={onClose}>
-        <div className="modal-form">
-          <p className="account-email">
-            Signed in as <strong>{email}</strong>
-          </p>
-          <div className="modal-actions">
-            <button type="button" onClick={onClose}>
-              Close
-            </button>
-            <button
-              className="primary-button"
-              type="button"
-              onClick={async () => {
-                await signOut();
-                onClose();
-              }}
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
       </Modal>
     );
   }

@@ -2191,3 +2191,123 @@ body {
 .trailer-button svg {
   flex: none;
 }
+
+/* ---------- Profile: name and avatar, with a small menu ---------- */
+
+.profile {
+  position: relative;
+}
+
+.profile-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: min(44vw, 12rem);
+  min-height: 44px;
+  padding: 0 0.4rem 0 0.9rem;
+  border-color: transparent;
+  border-radius: 999px;
+  color: var(--ink);
+}
+
+.profile-button:hover:not(:disabled),
+.profile-button[aria-expanded="true"] {
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+.profile-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatar {
+  flex: none;
+  display: block;
+}
+
+.profile-menu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 8;
+  display: grid;
+  min-width: min(15rem, 80vw);
+  padding: 0.35rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  animation: modal-backdrop-in 140ms ease both;
+}
+
+.profile-email {
+  margin: 0;
+  padding: 0.55rem 0.7rem 0.6rem;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+}
+
+.profile-menu button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.7rem;
+  border: 0;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.profile-menu button:hover {
+  background: var(--surface-2);
+}
+
+/* ---------- Phones: the three tabs share the full width equally ---------- */
+
+@media (max-width: 719px) {
+  .view-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .view-tabs > button,
+  .view-tabs .locked-wrap,
+  .view-tabs .locked-control {
+    width: 100%;
+  }
+
+  .view-tabs > button,
+  .view-tabs .locked-control {
+    justify-content: center;
+    padding: 0 0.25rem;
+    text-align: center;
+  }
+}
+
+/* ---------- Trailer window on a phone turned sideways ---------- */
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .modal-backdrop {
+    padding-block: 0.5rem;
+  }
+
+  .modal {
+    max-height: calc(100dvh - 1rem);
+  }
+
+  /* As wide as the height allows, so the whole video is on screen without scrolling. */
+  .trailer-frame {
+    width: min(100%, calc((100dvh - 7rem) * 16 / 9));
+    margin-inline: auto;
+  }
+}
