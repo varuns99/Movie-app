@@ -15,6 +15,19 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
   });
 }
 
+// An app installed while it was locked to portrait still carries that lock until
+// the phone updates the installed app. In the installed app, ask the phone to
+// follow its rotation setting again (needed for trailers to go fullscreen sideways).
+// Browsers that do not allow this simply refuse; nothing else depends on it.
+try {
+  if (window.matchMedia("(display-mode: standalone)").matches) {
+    const orientation = screen.orientation as ScreenOrientation & { lock?: (type: string) => Promise<void> };
+    void orientation?.lock?.("any")?.catch(() => {});
+  }
+} catch {
+  // Rotation then follows whatever the installed app was given.
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />

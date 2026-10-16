@@ -2,7 +2,7 @@
 // network is slow or gone. It only ever stores the app's own files. Movie data,
 // accounts, posters and trailers always come live from the network, because they
 // are on other sites (this worker never touches them).
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `two-seats-shell-${VERSION}`;
 const ASSET_CACHE = `two-seats-assets-${VERSION}`;
 const MAX_ASSETS = 40;
@@ -88,7 +88,26 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Icons, manifest and other small files: show the saved copy, refresh it in the background.
+  // The install settings (manifest): the newest copy when online. A saved copy
+  // here would make the phone keep seeing old settings after they change
+  // (an installed app is only updated when the phone sees the new manifest).
+  if (url.pathname.endsWith("/manifest.webmanifest")) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(SHELL_CACHE);
+        try {
+          const fresh = await fetch(request);
+          if (fresh.ok) cache.put(request, fresh.clone());
+          return fresh;
+        } catch {
+          return (await cache.match(request)) || Response.error();
+        }
+      })(),
+    );
+    return;
+  }
+
+  // Icons and other small files: show the saved copy, refresh it in the background.
   event.respondWith(
     (async () => {
       const cache = await caches.open(SHELL_CACHE);
