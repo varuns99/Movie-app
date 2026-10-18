@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 type StripItem = { id: string; title: string; posterUrl: string };
 
@@ -61,9 +61,14 @@ export function RouletteStage<T extends StripItem>({
   const count = items.length;
   const reach = Math.min(SIDE_COUNT, Math.floor((count - 1) / 2));
 
+  const root = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!idle || count < 2 || reducedMotion()) return;
-    const timer = window.setInterval(() => setDrift((current) => current + 1), DRIFT_MS);
+    // Not while it is hidden (another section is showing).
+    const timer = window.setInterval(() => {
+      if (root.current && root.current.offsetParent !== null) setDrift((current) => current + 1);
+    }, DRIFT_MS);
     return () => window.clearInterval(timer);
   }, [idle, count]);
 
@@ -71,7 +76,7 @@ export function RouletteStage<T extends StripItem>({
   const mode = spinning ? "spinning" : idle ? "idle" : "landed";
 
   return (
-    <div className={idle ? "roulette-carousel idle" : "roulette-carousel"}>
+    <div ref={root} className={idle ? "roulette-carousel idle" : "roulette-carousel"}>
       <div className="roulette-strip-wrap" inert={idle} aria-hidden={idle || undefined}>
         <div className={`coverflow ${mode}`}>
           <div className="coverflow-stage">

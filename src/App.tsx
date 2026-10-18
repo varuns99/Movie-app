@@ -331,12 +331,11 @@ function App() {
   const [ratingMovie, setRatingMovie] = useState<Movie | null>(null);
   const [viewMovieId, setViewMovieId] = useState<string | null>(null);
   const [tonightMode, setTonightModeState] = useState<TonightMode>(readTonightMode);
-  // Discover keeps its filters and list while you look at the other views, so it is
-  // built on first visit and then only hidden.
-  const [discoverVisited, setDiscoverVisited] = useState(() => readTonightMode() === "discover");
+  // Discover keeps its filters, list and pick while you look at the other modes and the
+  // other sections (Watchlist, History), so it is built on first visit and then only hidden.
+  const [discoverVisited, setDiscoverVisited] = useState(false);
   const setTonightMode = (mode: TonightMode) => {
     setTonightModeState(mode);
-    if (mode === "discover") setDiscoverVisited(true);
     try {
       window.localStorage.setItem(TONIGHT_MODE_KEY, mode);
     } catch {
@@ -368,6 +367,10 @@ function App() {
       { duration: 240, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
     );
   }, [activeView]);
+
+  useEffect(() => {
+    if (user && activeView === "tonight" && tonightMode === "discover") setDiscoverVisited(true);
+  }, [user, activeView, tonightMode]);
 
   // Swiping sideways moves between Tonight, Watchlist and History (only when signed in).
   const swipe = useSwipeNavigation((direction) => {
@@ -869,16 +872,17 @@ function App() {
               </section>
             )}
 
-            {discoverVisited && (
-              <div hidden={tonightMode !== "discover"}>
-                <DiscoverView
-                  saved={movies}
-                  onSave={(candidate) => (user ? cloudMovies.add(candidate, user.id) : Promise.resolve({ ok: false as const, message: "Sign in to add movies." }))}
-                  onTrailer={setTrailerMovie}
-                />
-              </div>
-            )}
           </>
+        )}
+
+        {user && !showSetup && discoverVisited && (
+          <div hidden={activeView !== "tonight" || tonightMode !== "discover"}>
+            <DiscoverView
+              saved={movies}
+              onSave={(candidate) => cloudMovies.add(candidate, user.id)}
+              onTrailer={setTrailerMovie}
+            />
+          </div>
         )}
 
         {user && !showSetup && activeView === "watchlist" && (
