@@ -346,11 +346,13 @@ const toCandidate = (result, extended) => {
 
   return {
     source: "tvdb",
+    kind: "movie",
     tvdbId: Number(result.tvdb_id || extended.id),
     title: result.name || extended.name || "Untitled",
     year,
     upcoming: release.upcoming,
     releaseDate: release.releaseDate,
+    tvdbScore: Number(extended.score) || 0,
     runtime: extended.runtime || 100,
     genres: genres.slice(0, 3),
     moods: moodFromGenres(genres),
@@ -365,6 +367,74 @@ const toCandidate = (result, extended) => {
   };
 };
 
+// ---------------------------------------------------------------------------
+// Series. A series is one item in the app (no seasons or episodes tracked yet).
+// ---------------------------------------------------------------------------
+
+// Number of regular seasons (specials, "season 0", and alternative orderings do not count).
+const seasonCountFrom = (extended) => {
+  const regular = (extended.seasons || []).filter(
+    (season) => season?.type?.type === "official" && Number(season.number) > 0,
+  );
+  return regular.length || undefined;
+};
+
+const isoDate = (value) => {
+  const text = String(value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : undefined;
+};
+
+// Is a series still to come? TVDB's status "Upcoming" says so, a first air date
+// still ahead says so, and so does a first-air year after this one. A series that
+// is Continuing or Ended is out. `releaseDate` is the first air date when it is ahead.
+const seriesRelease = ({ statusName, firstAired, year }) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const date = isoDate(firstAired);
+  const status = String(statusName || "").trim().toLowerCase();
+  const releaseYear = Number(year);
+  const upcoming =
+    status === "upcoming" ||
+    Boolean(date && date > today) ||
+    (Number.isFinite(releaseYear) && releaseYear > Number(today.slice(0, 4)));
+  return { upcoming, releaseDate: upcoming && date && date > today ? date : undefined };
+};
+
+const toSeriesCandidate = (result, extended) => {
+  const genres = (extended.genres?.length ? extended.genres.map((genre) => genre.name) : result.genres || []).filter(
+    Boolean,
+  );
+  const trailer = chooseTrailer(extended.trailers, result.primary_language || extended.originalLanguage);
+  const firstAired = isoDate(extended.firstAired || result.first_air_time);
+  const year = String(result.year || extended.year || (firstAired ? firstAired.slice(0, 4) : "TBA"));
+  const statusName = extended.status?.name || (typeof result.status === "string" ? result.status : result.status?.name);
+  const release = seriesRelease({ statusName, firstAired, year });
+
+  return {
+    source: "tvdb",
+    kind: "series",
+    tvdbId: Number(result.tvdb_id || extended.id),
+    title: result.name || extended.name || "Untitled",
+    year,
+    upcoming: release.upcoming,
+    releaseDate: release.releaseDate,
+    tvdbScore: Number(extended.score) || 0,
+    // Minutes per episode (0 when TVDB does not say).
+    runtime: Number(extended.averageRuntime || result.runtime || 0),
+    seasons: seasonCountFrom(extended),
+    seriesStatus: statusName || undefined,
+    firstAired,
+    genres: genres.slice(0, 3),
+    moods: moodFromGenres(genres),
+    synopsis: result.overview || extended.overview || "No synopsis yet.",
+    posterUrl: extended.image || result.image_url || result.poster || "/poster-placeholder.svg",
+    trailerUrl: trailer.url,
+    trailerLanguage: trailer.language,
+    language: result.primary_language || extended.originalLanguage || undefined,
+    imdbId: imdbIdFrom(extended.remoteIds),
+    searchTerms: titleTexts(result),
+  };
+};
+
 // TVDB applies its result limit before narrowing to movies, so a long or
 // spider-heavy query can fill a small limit with series, people and lists and
 // leave no movies at all. Ask for plenty and pick the movies ourselves.
@@ -372,9 +442,14 @@ const SEARCH_POOL = 50;
 const SEARCH_RESULTS = 6;
 const MAX_SEARCH_VARIANTS = 6;
 
-const searchPool = async (query, env) => {
-  const body = await tvdbFetch("/search", env, { query, type: "movie", limit: SEARCH_POOL });
-  return (body.data || []).filter((result) => result.tvdb_id && (!result.type || result.type === "movie"));
+const searchPool = async (query, env, kind = "movie", offset = 0) => {
+  const body = await tvdbFetch("/search", env, {
+    query,
+    type: kind,
+    limit: SEARCH_POOL,
+    offset: offset ? String(offset) : undefined,
+  });
+  return (body.data || []).filter((result) => result.tvdb_id && (!result.type || result.type === kind));
 };
 
 // TVDB wants whole words (and the hyphens of "Spider-Man"), but people type a
@@ -432,8 +507,9 @@ const matchRank = (result, query) => {
 // Pick what to show. Titles that really match what was typed come first (ties
 // keep TVDB's order); titles that do not match at all are dropped. The one
 // exception is a short query with no real match, where TVDB's own fuzzy answer
-// (a typo such as "inceptoin") is better than nothing.
-const chooseSearchResults = (pools, query) => {
+// (a typo such as "inceptoin") is better than nothing. Each item keeps its rank
+// so movies and series can be merged.
+const pickSearchResults = (pools, query) => {
   const seen = new Set();
   const all = pools.flat().filter((result) => !seen.has(result.tvdb_id) && seen.add(result.tvdb_id));
   const ranked = all
@@ -441,32 +517,97 @@ const chooseSearchResults = (pools, query) => {
     .sort((a, b) => a.rank - b.rank || a.index - b.index);
   const strong = ranked.filter((item) => item.rank < 4);
   const words = query.trim().split(/\s+/).filter(Boolean);
-  const chosen = strong.length ? strong : words.length <= 2 ? (pools[0] || []).map((result, index) => ({ result, index })) : [];
-  return chosen.slice(0, SEARCH_RESULTS).map((item) => item.result);
+  return strong.length
+    ? strong
+    : words.length <= 2
+      ? (pools[0] || []).map((result, index) => ({ result, index, rank: 4 }))
+      : [];
 };
 
-const searchMovies = async (query, env) => {
-  const answers = await Promise.all(searchVariants(query).map((variant) => searchPool(variant, env).catch(() => null)));
-  // One failed variant should not sink the search; all of them failing should be reported.
-  if (answers.every((answer) => answer === null)) throw new Error("TVDB search failed");
-  const results = chooseSearchResults(
-    answers.map((answer) => answer || []),
-    query,
-  );
+const ANY_SEARCH_RESULTS = 8;
+// How many of the best title matches get a full lookup before the final order
+// is decided (fewer when both kinds are searched, to stay within the worker's
+// limit on requests).
+const SEARCH_FETCH = 12;
+const ANY_SEARCH_FETCH = 8;
 
-  const candidates = await Promise.all(
-    results.map(async (result) => {
-      let extended = {};
-      try {
-        extended = (await tvdbFetch(`/movies/${Number(result.tvdb_id)}/extended`, env)).data || {};
-      } catch {
-        extended = {};
-      }
-      return toCandidate(result, extended);
+// TVDB is community edited: anyone can add a "series" for a YouTube channel or a
+// playthrough, so a plain title match returns fan entries next to the real show.
+// Such entries have no IMDb link, no trailer and a one-line description.
+const isWeakEntry = (result, extended, trailer) =>
+  !imdbIdFrom(extended.remoteIds) && !trailer.url && String(result.overview || extended.overview || "").length < 80;
+
+// kind: "movie" (the default), "series", or "any" (both, best matches first).
+// Order: the title match comes first (an exact title, however it
+// is spelled or translated, beats a title that merely starts with the words);
+// then weak entries go last; then the more popular (TVDB's own score) title
+// first; then the closer title match; then TVDB's own order.
+const searchTitles = async (query, env, kind = "movie") => {
+  const kinds = kind === "any" ? ["movie", "series"] : [kind];
+  const fetchCap = kind === "any" ? ANY_SEARCH_FETCH : SEARCH_FETCH;
+  const perKind = await Promise.all(
+    kinds.map(async (one) => {
+      const tasks = searchVariants(query).map((variant) => searchPool(variant, env, one).catch(() => null));
+      // A short, common title ("Parasite") has more matches than one page holds, and TVDB
+      // does not put the famous one first. Read the next page of the plain query too.
+      if (query.trim().split(/\s+/).length <= 2) tasks.push(searchPool(query.trim(), env, one, SEARCH_POOL).catch(() => null));
+      const answers = await Promise.all(tasks);
+      // One failed variant should not sink the search; all of them failing should be reported.
+      if (answers.every((answer) => answer === null)) throw new Error("TVDB search failed");
+      const top = pickSearchResults(
+        answers.map((answer) => answer || []),
+        query,
+      ).slice(0, fetchCap);
+
+      const loaded = await Promise.all(
+        top.map(async (item) => {
+          let extended = {};
+          try {
+            extended = (await tvdbFetch(`/${one === "series" ? "series" : "movies"}/${Number(item.result.tvdb_id)}/extended`, env)).data || {};
+          } catch {
+            extended = {};
+          }
+          const candidate = one === "series" ? toSeriesCandidate(item.result, extended) : toCandidate(item.result, extended);
+          const trailer = chooseTrailer(extended.trailers, item.result.primary_language || extended.originalLanguage);
+          return { ...item, kind: one, candidate, weak: isWeakEntry(item.result, extended, trailer), score: candidate.tvdbScore };
+        }),
+      );
+      loaded.sort(
+        (a, b) =>
+          Math.floor(a.rank) - Math.floor(b.rank) ||
+          Number(a.weak) - Number(b.weak) ||
+          b.score - a.score ||
+          a.rank - b.rank ||
+          a.index - b.index,
+      );
+      return loaded.map((item, position) => ({ ...item, position }));
     }),
   );
-  const checked = await withCheckedLanguages(candidates);
-  return { results: checked.candidates, complete: checked.complete };
+
+  // Both kinds together: the same order, with TVDB's popularity compared across
+  // films and series (the two are on a similar scale, so a hugely popular series
+  // is not buried under an obscure film that happens to share its title).
+  const chosen = perKind
+    .flat()
+    .sort(
+      (a, b) =>
+        Math.floor(a.rank) - Math.floor(b.rank) ||
+        Number(a.weak) - Number(b.weak) ||
+        b.score - a.score ||
+        a.position - b.position ||
+        (a.kind === "movie" ? -1 : 1),
+    )
+    .slice(0, kind === "any" ? ANY_SEARCH_RESULTS : SEARCH_RESULTS)
+    .map((item) => item.candidate);
+
+  // Only films get the Wikidata language cross-check; a series keeps TVDB's own language.
+  const films = chosen.filter((candidate) => candidate.kind === "movie");
+  const checked = films.length ? await withCheckedLanguages(films) : { candidates: [], complete: true };
+  const checkedById = new Map(checked.candidates.map((candidate) => [candidate.tvdbId, candidate]));
+  return {
+    results: chosen.map((candidate) => (candidate.kind === "movie" ? (checkedById.get(candidate.tvdbId) ?? candidate) : candidate)),
+    complete: checked.complete,
+  };
 };
 
 // Compare titles ignoring case, accents and punctuation ("Južina" = "Juzina").
@@ -504,6 +645,30 @@ const movieDetails = async (id, env) => {
   };
 };
 
+// A series' own title, its English title when different, and an English synopsis,
+// the same way as for a film. Series are not cross-checked with Wikidata: TVDB's
+// own language is used, so the answer counts as checked.
+const seriesDetails = async (id, env) => {
+  const extended = (await tvdbFetch(`/series/${id}/extended`, env, { meta: "translations" })).data || {};
+  const translations = extended.translations || {};
+  const nameIn = (code) => (translations.nameTranslations || []).find((item) => item.language === code)?.name;
+  const englishOverview = (translations.overviewTranslations || []).find((item) => item.language === "eng")?.overview;
+  const candidate = toSeriesCandidate({ tvdb_id: id }, extended);
+
+  const originalTitle = (candidate.language && nameIn(candidate.language)) || candidate.title;
+  const englishName = nameIn("eng");
+  const englishTitle = englishName && titleKey(englishName) !== titleKey(originalTitle) ? englishName : undefined;
+
+  return {
+    ...candidate,
+    languageChecked: true,
+    title: originalTitle,
+    englishTitle,
+    synopsis: englishOverview || extended.overview || "",
+    posterUrl: artworkUrl(candidate.posterUrl),
+  };
+};
+
 // TVDB genre ids, looked up once per isolate by name ("Action" -> 1).
 let cachedGenreIds = null;
 const genreAliases = { "sci-fi": "science fiction" };
@@ -522,11 +687,13 @@ const MAX_GENRES = 5;
 const MAX_FILTER_REQUESTS = 24;
 const MAX_DISCOVER_RESULTS = 60;
 
-// Browse movies by language, release year(s), genre(s) and runtime. TVDB filters
-// one release year and one genre per request, so the client sends a few sample
-// years and the worker asks once per (year, genre) pair and merges the answers:
-// a film matches if it has at least one of the chosen genres.
-const discoverMovies = async (params, env) => {
+// Browse movies (or, with kind=series, series) by language, release year(s),
+// genre(s) and, for films only, runtime. TVDB filters one release year and one
+// genre per request, so the client sends a few sample years and the worker asks
+// once per (year, genre) pair and merges the answers: a title matches if it has
+// at least one of the chosen genres.
+const discoverTitles = async (params, env) => {
+  const isSeries = params.get("kind") === "series";
   const years = (params.get("years") || "")
     .split(",")
     .map((year) => Number(year))
@@ -559,7 +726,7 @@ const discoverMovies = async (params, env) => {
 
   const pages = await Promise.all(
     tasks.map((task) =>
-      tvdbFetch("/movies/filter", env, {
+      tvdbFetch(isSeries ? "/series/filter" : "/movies/filter", env, {
         year: String(task.year),
         lang,
         genre: task.genre ? String(task.genre.id) : undefined,
@@ -581,7 +748,7 @@ const discoverMovies = async (params, env) => {
     .flatMap((page) => page || [])
     .forEach(({ movie, genre }) => {
       if (!movie?.id || !movie.image) return;
-      if (movie.runtime && movie.runtime > maxRuntime) return;
+      if (!isSeries && movie.runtime && movie.runtime > maxRuntime) return;
       const releaseYear = Number(movie.year);
       if (Number.isFinite(releaseYear) && (releaseYear < yearFrom || releaseYear > yearTo)) return;
       const entry = merged.get(movie.id) || { movie, genres: new Set() };
@@ -596,13 +763,38 @@ const discoverMovies = async (params, env) => {
     .slice(0, MAX_DISCOVER_RESULTS)
     .map(({ movie, genres: matched }) => {
       const names = [...matched].slice(0, 3);
+      if (isSeries) {
+        const firstAired = isoDate(movie.firstAired);
+        const year = movie.year ? String(movie.year) : firstAired ? firstAired.slice(0, 4) : "TBA";
+        const release = seriesRelease({ statusName: movie.status?.name, firstAired, year });
+        return {
+          source: "tvdb",
+          kind: "series",
+          tvdbId: Number(movie.id),
+          title: movie.name || "Untitled",
+          year,
+          upcoming: release.upcoming,
+          releaseDate: release.releaseDate,
+          seriesStatus: movie.status?.name || undefined,
+          firstAired,
+          tvdbScore: Number(movie.score) || 0,
+          runtime: Number(movie.averageRuntime || 0),
+          genres: names,
+          moods: moodFromGenres(names),
+          synopsis: "",
+          posterUrl: artworkUrl(movie.image),
+          language: movie.originalLanguage || lang,
+        };
+      }
       return {
         source: "tvdb",
+        kind: "movie",
         tvdbId: Number(movie.id),
         title: movie.name || "Untitled",
         year: movie.year ? String(movie.year) : "TBA",
         upcoming: releaseInfo({ statusName: movie.status?.name, year: movie.year, dates: [] }).upcoming,
         tvdbStatus: movie.status?.name || undefined,
+        tvdbScore: Number(movie.score) || 0,
         runtime: movie.runtime || 100,
         genres: names,
         moods: moodFromGenres(names),
@@ -648,7 +840,7 @@ export default {
       return json({ ok: true }, {}, corsHeaders);
     }
 
-    const routes = ["/search", "/discover", "/movie", "/verify"];
+    const routes = ["/search", "/discover", "/movie", "/series", "/verify"];
     if (request.method !== "GET" || !routes.includes(url.pathname)) {
       return json({ error: "Not found" }, { status: 404 }, corsHeaders);
     }
@@ -663,7 +855,7 @@ export default {
 
     try {
       if (url.pathname === "/discover") {
-        return json({ results: await discoverMovies(url.searchParams, env) }, cached, corsHeaders);
+        return json({ results: await discoverTitles(url.searchParams, env) }, cached, corsHeaders);
       }
 
       if (url.pathname === "/verify") {
@@ -679,11 +871,21 @@ export default {
         return json({ result }, cacheIf(result.languageChecked), corsHeaders);
       }
 
+      if (url.pathname === "/series") {
+        const id = Number(url.searchParams.get("id"));
+        if (!Number.isInteger(id) || id <= 0) return json({ error: "Bad series id" }, { status: 400 }, corsHeaders);
+        const result = await seriesDetails(id, env);
+        return json({ result }, cached, corsHeaders);
+      }
+
       const query = url.searchParams.get("query")?.trim() || "";
       if (query.length < 2 || query.length > 80) {
         return json({ results: [] }, {}, corsHeaders);
       }
-      const found = await searchMovies(query, env);
+      // kind: movie (the default, so the current app is unchanged), series, or any.
+      const requested = url.searchParams.get("kind");
+      const kind = requested === "series" || requested === "any" ? requested : "movie";
+      const found = await searchTitles(query, env, kind);
       return json({ results: found.results }, cacheIf(found.complete), corsHeaders);
     } catch {
       return json({ error: "TVDB request failed" }, { status: 502 }, corsHeaders);
