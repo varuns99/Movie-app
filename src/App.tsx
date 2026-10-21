@@ -29,7 +29,7 @@ import { ChipSelect } from "./ChipSelect";
 import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
 import { listSummary, yearSummary } from "./filterText";
-import { altTitle, cardMeta, isSameItem, titleKey, titleMeta } from "./titles";
+import { altTitle, cardMeta, isSameItem, lengthText, titleKey, titleMeta } from "./titles";
 import { normalizeTrailerUrl } from "./trailers";
 import { LockedFeature } from "./LockedFeature";
 import { ProfileMenu } from "./ProfileMenu";
@@ -133,13 +133,23 @@ const calculateTasteProfile = (movies: Movie[]): TasteProfile => {
 
   const genreScores = new Map<string, number>();
   const moodScores = new Map<Mood, number>();
+  // Film length and episode length are kept apart: averaging them would describe neither.
   let weightedRuntime = 0;
-  let totalWeight = 0;
+  let filmWeight = 0;
+  let weightedEpisode = 0;
+  let episodeWeight = 0;
 
   watched.forEach((movie) => {
     const weight = averageRating(movie) ?? 6;
-    totalWeight += weight;
-    weightedRuntime += movie.runtime * weight;
+    if (movie.kind === "series") {
+      if (movie.runtime > 0) {
+        episodeWeight += weight;
+        weightedEpisode += movie.runtime * weight;
+      }
+    } else {
+      filmWeight += weight;
+      weightedRuntime += movie.runtime * weight;
+    }
     movie.genres.forEach((genre) => genreScores.set(genre, (genreScores.get(genre) ?? 0) + weight));
     movie.moods.forEach((mood) => moodScores.set(mood, (moodScores.get(mood) ?? 0) + weight));
   });
@@ -153,7 +163,8 @@ const calculateTasteProfile = (movies: Movie[]): TasteProfile => {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([mood]) => mood),
-    preferredRuntime: Math.round(weightedRuntime / Math.max(totalWeight, 1)),
+    preferredRuntime: filmWeight ? Math.round(weightedRuntime / filmWeight) : 110,
+    preferredEpisodeRuntime: episodeWeight ? Math.round(weightedEpisode / episodeWeight) : undefined,
     watchedCount: watched.length,
   };
 };
@@ -164,12 +175,17 @@ const matchScore = (movie: Movie, profile: TasteProfile) => {
   }
 
   if (!profile.watchedCount) {
-    return clamp(70 + (movie.moods.includes("low-effort") ? 8 : 0) - Math.max(0, movie.runtime - 130) / 8, 52, 91);
+    // Only a film's length counts against it; an episode length says nothing about the effort.
+    const lengthPenalty = movie.kind === "series" ? 0 : Math.max(0, movie.runtime - 130) / 8;
+    return clamp(70 + (movie.moods.includes("low-effort") ? 8 : 0) - lengthPenalty, 52, 91);
   }
 
   const genreHits = movie.genres.filter((genre) => profile.favoriteGenres.includes(genre)).length;
   const moodHits = movie.moods.filter((mood) => profile.topMoods.includes(mood)).length;
-  const runtimeFit = Math.max(0, 16 - Math.abs(movie.runtime - profile.preferredRuntime) / 4);
+  // A film is compared with the lengths of films you liked, a series with the episode lengths of
+  // series you liked (a neutral middle value until a series has been finished).
+  const preferred = movie.kind === "series" ? profile.preferredEpisodeRuntime : profile.preferredRuntime;
+  const runtimeFit = preferred && movie.runtime > 0 ? Math.max(0, 16 - Math.abs(movie.runtime - preferred) / 4) : 8;
   const freshness = movie.addedAt ? Math.max(0, 5 - (Date.now() - new Date(movie.addedAt).getTime()) / 86400000 / 6) : 0;
 
   return Math.round(clamp(58 + genreHits * 8 + moodHits * 6 + runtimeFit + freshness, 45, 98));
@@ -183,6 +199,7 @@ const inYearRange = (year: string, from: number, to: number) => {
 };
 
 const DEFAULT_ROULETTE_FILTERS: RouletteFilters = {
+  type: "all",
   maxRuntime: 150,
   genres: [],
   language: "any",
@@ -197,7 +214,9 @@ const filterMovies = (movies: Movie[], filters: RouletteFilters, isUnreleased: (
   movies.filter((movie) => {
     if (isUnreleased(movie)) return false;
     if (filters.onlyUnwatched && movie.status !== "unwatched") return false;
-    if (movie.runtime > filters.maxRuntime) return false;
+    if (filters.type !== "all" && movie.kind !== filters.type) return false;
+    // The length filter is for films; a series' episode length is not comparable.
+    if (movie.kind !== "series" && movie.runtime > filters.maxRuntime) return false;
     if (filters.genres.length && !movie.genres.some((genre) => filters.genres.includes(genre))) return false;
     if (filters.language !== "any" && movie.language !== filters.language) return false;
     if (filters.moods.length && !movie.moods.some((mood) => filters.moods.includes(mood))) return false;
@@ -525,13 +544,16 @@ function App() {
   const unwatchedCount = movies.length - watchedMovies.length;
 
   const rouletteSummary = [
+    filters.type === "all" ? "Movies and series" : filters.type === "movie" ? "Movies only" : "Series only",
     filters.language === "any" ? "Any language" : languageName(filters.language),
     yearSummary(filters.yearFrom, filters.yearTo, FIRST_YEAR, CURRENT_YEAR),
-    `Up to ${filters.maxRuntime} min`,
+    filters.type === "series" ? "" : `Movies up to ${filters.maxRuntime} min`,
     listSummary(filters.genres, "Any genre"),
     listSummary(filters.moods.map((mood) => moodLabels[mood]), "Any mood"),
     filters.onlyUnwatched ? "Unwatched only" : "Watched too",
-  ].join(" · ");
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   // Each saved TVDB movie is checked once per device: the movie service fills in
   // a missing original language, corrects a wrong one, and supplies the English
@@ -750,7 +772,10 @@ function App() {
                       <h2>Best for us tonight</h2>
                       <h3>{bestTonight.title}</h3>
                       <p>
-                        {bestTonight.runtime} min · {bestTonight.genres.slice(0, 2).join(", ")}
+                        <span className={bestTonight.kind === "series" ? "kind-pill" : "kind-pill movie"}>
+                          {bestTonight.kind === "series" ? "Series" : "Movie"}
+                        </span>
+                        {[lengthText(bestTonight), bestTonight.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
                       </p>
                       <span className="score">{matchScore(bestTonight, profile)}% match</span>
                       <button className="best-view" onClick={() => setViewMovieId(bestTonight.id)}>
@@ -788,6 +813,17 @@ function App() {
                   {(draft, change) => (
                     <div className="filters">
                       <label>
+                        Type
+                        <select
+                          value={draft.type}
+                          onChange={(event) => change({ type: event.target.value as RouletteFilters["type"] })}
+                        >
+                          <option value="all">Movies and series</option>
+                          <option value="movie">Movies only</option>
+                          <option value="series">Series only</option>
+                        </select>
+                      </label>
+                      <label>
                         Language
                         <select value={draft.language} onChange={(event) => change({ language: event.target.value })}>
                           <option value="any">Any language</option>
@@ -813,7 +849,7 @@ function App() {
                         onChange={(yearFrom, yearTo) => change({ yearFrom, yearTo })}
                       />
                       <label>
-                        Max runtime
+                        Max runtime (movies only)
                         <input
                           type="range"
                           min="80"
@@ -861,7 +897,7 @@ function App() {
                       )}
                     </>
                   ) : (
-                    <EmptyState title="No movies match" body="Loosen a filter and the roulette wheel will behave itself again." />
+                    <EmptyState title="No titles match" body="Loosen a filter and the roulette wheel will behave itself again." />
                   )}
                 </div>
 
@@ -872,7 +908,7 @@ function App() {
                     altTitle={altTitle(selectedMovie.title, selectedMovie.englishTitle)}
                     posterUrl={selectedMovie.posterUrl}
                     imdbId={selectedMovie.imdbId}
-                    meta={[selectedMovie.year, `${selectedMovie.runtime} min`, selectedMovie.genres.slice(0, 2).join(", ")]
+                    meta={[titleMeta(selectedMovie, " · "), selectedMovie.genres.slice(0, 2).join(", ")]
                       .filter(Boolean)
                       .join(" · ")}
                     synopsis={selectedMovie.synopsis}
@@ -889,7 +925,7 @@ function App() {
                         }));
                       }}
                     >
-                      Mark watched
+                      {selectedMovie.kind === "series" ? "Mark finished" : "Mark watched"}
                     </button>
                   </PickWindow>
                 )}
@@ -933,6 +969,11 @@ function App() {
                   <span>
                     <strong>Preferred runtime</strong> {profile.preferredRuntime} min
                   </span>
+                  {profile.preferredEpisodeRuntime && (
+                    <span>
+                      <strong>Preferred episode length</strong> {profile.preferredEpisodeRuntime} min
+                    </span>
+                  )}
                   <span>
                     <strong>Top moods</strong> {profile.topMoods.map((mood) => moodLabels[mood]).join(", ")}
                   </span>

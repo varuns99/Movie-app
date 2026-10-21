@@ -55,3 +55,11 @@ export const cardMeta = (item: MetaSource) => {
   if (item.seasons) parts.push(`${item.seasons}\u00a0${item.seasons === 1 ? "season" : "seasons"}`);
   return parts.join("\u00a0· ");
 };
+
+// How long it is: "148 min" for a film, "11 seasons" for a series (or its episode length when the
+// number of seasons is not known).
+export const lengthText = (item: MetaSource) => {
+  if (item.kind !== "series") return `${item.runtime}\u00a0min`;
+  if (item.seasons) return `${item.seasons}\u00a0${item.seasons === 1 ? "season" : "seasons"}`;
+  return item.runtime ? `${item.runtime}\u00a0min/ep` : "";
+};

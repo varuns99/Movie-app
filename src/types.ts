@@ -85,6 +85,9 @@ export type MovieCandidate = {
 };
 
 export type RouletteFilters = {
+  // Movies, series, or both.
+  type: "all" | "movie" | "series";
+  // Applies to movies only; a series' episode length is not comparable.
   maxRuntime: number;
   // Empty means "any". A movie matches if it has at least one chosen genre / mood.
   genres: string[];
@@ -98,7 +101,10 @@ export type RouletteFilters = {
 export type TasteProfile = {
   favoriteGenres: string[];
   topMoods: Mood[];
+  // Average length of the films you liked (minutes).
   preferredRuntime: number;
+  // Average episode length of the series you liked; missing until a series has been finished.
+  preferredEpisodeRuntime?: number;
   watchedCount: number;
 };
 
