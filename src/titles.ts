@@ -46,3 +46,12 @@ export const titleMeta = (item: MetaSource, separator = "\u00a0• ") => {
   if (item.runtime) parts.push(`${item.runtime}\u00a0min/ep`);
   return parts.join(separator);
 };
+
+// The short details line on a Watchlist card: "2010 · 148 min" for a film, "2010 · 11 seasons" for a series
+// (episode length and status are in the details window and on the poster).
+export const cardMeta = (item: MetaSource) => {
+  if (item.kind !== "series") return titleMeta(item, "\u00a0· ");
+  const parts = [item.year];
+  if (item.seasons) parts.push(`${item.seasons}\u00a0${item.seasons === 1 ? "season" : "seasons"}`);
+  return parts.join("\u00a0· ");
+};

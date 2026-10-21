@@ -25,6 +25,8 @@
   --accent: #3ddc97;
   --accent-soft: rgba(61, 220, 151, 0.12);
   --on-accent: #07130d;
+  /* The "Movie" tag: a neon purple, next to the green "Series" tag. */
+  --movie: #b66bff;
   --danger: #ff7a7a;
   --danger-soft: rgba(255, 122, 122, 0.12);
   --scrim: rgba(6, 7, 8, 0.72);
@@ -48,6 +50,7 @@
     --accent: #0e8a5c;
     --accent-soft: rgba(14, 138, 92, 0.1);
     --on-accent: #ffffff;
+    --movie: #7c2de0;
     --danger: #c9363e;
     --danger-soft: rgba(201, 54, 62, 0.1);
     --scrim: rgba(20, 21, 22, 0.45);
@@ -2365,4 +2368,44 @@ body {
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
+}
+
+/* ---------- Series on the Watchlist ---------- */
+
+.poster-wrap .kind-badge,
+.poster-wrap .airing-badge {
+  position: absolute;
+  bottom: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.poster-wrap .kind-badge {
+  right: 0.5rem;
+  color: #fff;
+  background: var(--scrim);
+  border: 1px solid var(--accent);
+}
+
+.poster-wrap .airing-badge {
+  left: 0.5rem;
+  color: #fff;
+  background: var(--scrim);
+}
+
+/* ---------- The "Movie" tag: neon purple, like the green "Series" tag ---------- */
+
+/* On a poster the tag always sits on a dark backing, so the bright purple is used in both themes. */
+.poster-wrap .kind-badge.movie {
+  border-color: #b66bff;
+  box-shadow: 0 0 10px rgba(182, 107, 255, 0.55);
+}
+
+.kind-pill.movie {
+  border-color: var(--movie);
+  color: var(--movie);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--movie) 40%, transparent);
 }

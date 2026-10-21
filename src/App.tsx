@@ -29,7 +29,7 @@ import { ChipSelect } from "./ChipSelect";
 import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
 import { listSummary, yearSummary } from "./filterText";
-import { altTitle, isSameItem, titleKey, titleMeta } from "./titles";
+import { altTitle, cardMeta, isSameItem, titleKey, titleMeta } from "./titles";
 import { normalizeTrailerUrl } from "./trailers";
 import { LockedFeature } from "./LockedFeature";
 import { ProfileMenu } from "./ProfileMenu";
@@ -247,10 +247,11 @@ const sortWatchlist = (movies: Movie[], sort: WatchlistSort, profile: TasteProfi
       return sorted.sort((a, b) => a.title.localeCompare(b.title));
     case "match-desc":
       return sorted.sort((a, b) => matchScore(b, profile) - matchScore(a, profile));
+    // Runtime means a film's length; a series (episode length) goes after the films either way.
     case "runtime-asc":
-      return sorted.sort((a, b) => a.runtime - b.runtime);
+      return sorted.sort((a, b) => Number(a.kind === "series") - Number(b.kind === "series") || a.runtime - b.runtime);
     case "runtime-desc":
-      return sorted.sort((a, b) => b.runtime - a.runtime);
+      return sorted.sort((a, b) => Number(a.kind === "series") - Number(b.kind === "series") || b.runtime - a.runtime);
     case "year-desc":
       return sorted.sort((a, b) => Number(b.year) - Number(a.year));
     case "year-asc":
@@ -263,7 +264,10 @@ const sortWatchlist = (movies: Movie[], sort: WatchlistSort, profile: TasteProfi
 
 const DEFAULT_WATCHLIST_MAX_RUNTIME = 300;
 
+type WatchTypeFilter = "all" | "movie" | "series";
+
 type WatchlistFilters = {
+  type: WatchTypeFilter;
   genres: string[];
   language: string;
   yearFrom: number;
@@ -274,6 +278,7 @@ type WatchlistFilters = {
 };
 
 const DEFAULT_WATCHLIST_FILTERS: WatchlistFilters = {
+  type: "all",
   genres: [],
   language: "any",
   yearFrom: FIRST_YEAR,
@@ -456,6 +461,7 @@ function App() {
   const profile = useMemo(() => calculateTasteProfile(movies), [movies]);
   // Sorting is not a filter, so it does not count as "filtering" the list.
   const watchlistFiltersActive =
+    watchlistFilters.type !== "all" ||
     watchlistFilters.genres.length > 0 ||
     watchlistFilters.language !== "any" ||
     watchlistFilters.yearFrom > FIRST_YEAR ||
@@ -465,18 +471,21 @@ function App() {
   const filteredWatchlist = useMemo(() => {
     const f = watchlistFilters;
     const filtered = movies.filter((movie) => {
+      if (f.type !== "all" && movie.kind !== f.type) return false;
       if (f.genres.length && !movie.genres.some((genre) => f.genres.includes(genre))) return false;
       if (f.language !== "any" && movie.language !== f.language) return false;
       if (!inYearRange(movie.year, f.yearFrom, f.yearTo)) return false;
       if (f.status === "unreleased") {
         if (!release.isUnreleased(movie)) return false;
       } else if (f.status !== "any" && movie.status !== f.status) return false;
-      if (movie.runtime > f.maxRuntime) return false;
+      // The length filter is for films; a series' episode length is not comparable.
+      if (movie.kind !== "series" && movie.runtime > f.maxRuntime) return false;
       return true;
     });
     return sortWatchlist(filtered, f.sort, profile);
   }, [movies, watchlistFilters, profile, release]);
   const watchlistSummary = [
+    watchlistFilters.type === "all" ? "Movies and series" : watchlistFilters.type === "movie" ? "Movies only" : "Series only",
     watchlistFilters.language === "any" ? "Any language" : languageName(watchlistFilters.language),
     yearSummary(watchlistFilters.yearFrom, watchlistFilters.yearTo, FIRST_YEAR, CURRENT_YEAR),
     listSummary(watchlistFilters.genres, "Any genre"),
@@ -953,6 +962,14 @@ function App() {
                     </select>
                   </label>
                   <label>
+                    Type
+                    <select value={draft.type} onChange={(event) => change({ type: event.target.value as WatchTypeFilter })}>
+                      <option value="all">Movies and series</option>
+                      <option value="movie">Movies only</option>
+                      <option value="series">Series only</option>
+                    </select>
+                  </label>
+                  <label>
                     Language
                     <select value={draft.language} onChange={(event) => change({ language: event.target.value })}>
                       <option value="any">Any language</option>
@@ -982,7 +999,7 @@ function App() {
                     onChange={(yearFrom, yearTo) => change({ yearFrom, yearTo })}
                   />
                   <label>
-                    Max runtime
+                    Max runtime (movies only)
                     <input
                       type="range"
                       min="10"
@@ -1009,8 +1026,8 @@ function App() {
                 <h2>Watchlist</h2>
                 <span>
                   {watchlistFiltersActive
-                    ? `${filteredWatchlist.length} of ${movies.length} movies`
-                    : `${movies.length} movies`}
+                    ? `${filteredWatchlist.length} of ${movies.length} titles`
+                    : `${movies.length} ${movies.length === 1 ? "title" : "titles"}`}
                 </span>
               </div>
               {movies.length ? (
@@ -1129,12 +1146,12 @@ function App() {
       {!splashDone && <SplashScreen ready={!authLoading} onDone={finishSplash} />}
       {viewMovie && (
         <PickWindow
-          heading="Movie details"
+          heading={viewMovie.kind === "series" ? "Series details" : "Movie details"}
           title={viewMovie.title}
           altTitle={altTitle(viewMovie.title, viewMovie.englishTitle)}
           posterUrl={viewMovie.posterUrl}
           imdbId={viewMovie.imdbId}
-          meta={`${viewMovie.year} · ${viewMovie.runtime} min`}
+          meta={titleMeta(viewMovie, " · ")}
           details={
             <div className="view-details">
               {release.releaseText(viewMovie) && (
@@ -1275,7 +1292,9 @@ function AddMovieBar({
                   <div>
                     <h3>{movie.title}</h3>
                     <p className={movie.kind === "series" ? "wrap" : undefined}>
-                      {movie.kind === "series" && <span className="kind-pill">Series</span>}
+                      <span className={movie.kind === "series" ? "kind-pill" : "kind-pill movie"}>
+                        {movie.kind === "series" ? "Series" : "Movie"}
+                      </span>
                       {titleMeta(movie)}
                     </p>
                     {isUpcomingCandidate(movie) && (
@@ -1336,6 +1355,8 @@ type MovieCardProps = {
 // Every part of the card sits in its own row so that, across a row of cards, the
 // titles, years, ratings and buttons line up exactly (see .movie-card in the styles).
 function MovieCard({ movie, score, members, releaseText, onView, onToggleWatched }: MovieCardProps) {
+  const isSeries = movie.kind === "series";
+  const airing = isSeries && movie.seriesStatus === "Continuing";
   // Ratings show on the card only once everyone has rated; until then the
   // View window has them, with who is still to rate.
   const fullyRated = movie.status === "watched" && ratingProgress(movie, members).complete;
@@ -1351,14 +1372,17 @@ function MovieCard({ movie, score, members, releaseText, onView, onToggleWatched
     >
       <div className="poster-wrap">
         <img src={movie.posterUrl} alt="" loading="lazy" />
-        {releaseText && <em className="upcoming-badge">Not out yet</em>}
+        {releaseText ? (
+          <em className="upcoming-badge">Not out yet</em>
+        ) : (
+          airing && <em className="airing-badge">Airing</em>
+        )}
+        <em className={isSeries ? "kind-badge" : "kind-badge movie"}>{isSeries ? "Series" : "Movie"}</em>
         <span>{score}%</span>
       </div>
       <h3 className="card-title">{movie.title}</h3>
       {alt && <p className="alt-title card-alt">({alt})</p>}
-      <p className="card-meta">
-        {movie.year} · {movie.runtime} min
-      </p>
+      <p className="card-meta">{cardMeta(movie)}</p>
       {fullyRated && (
         <div className="card-rating">
           <RatingSummary movie={movie} members={members} />
@@ -1368,7 +1392,7 @@ function MovieCard({ movie, score, members, releaseText, onView, onToggleWatched
         <div className="card-buttons">
           <button onClick={onView}>View</button>
           <button className={movie.status === "watched" ? "status watched" : "status"} onClick={onToggleWatched}>
-            {movie.status === "watched" ? "Watched" : "Mark watched"}
+            {movie.status === "watched" ? (isSeries ? "Finished" : "Watched") : isSeries ? "Mark finished" : "Mark watched"}
           </button>
         </div>
       </div>
