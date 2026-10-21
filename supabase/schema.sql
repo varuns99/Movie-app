@@ -54,6 +54,16 @@ alter table public.movies add column if not exists english_title text;
 -- The film's IMDb title id ("tt0066461"), used only to link to its IMDb page.
 alter table public.movies add column if not exists imdb_id text;
 
+-- Series support. A watchlist item is either a movie or a series (a series is one
+-- item: no seasons or episodes are tracked). Every existing row is a movie. For a
+-- series, the number of regular seasons and TVDB's status ("Continuing", "Ended",
+-- "Upcoming") are kept too. Safe to run again.
+alter table public.movies add column if not exists kind text not null default 'movie';
+alter table public.movies drop constraint if exists movies_kind_check;
+alter table public.movies add constraint movies_kind_check check (kind in ('movie', 'series'));
+alter table public.movies add column if not exists seasons integer;
+alter table public.movies add column if not exists series_status text;
+
 create index if not exists movies_room_id_idx on public.movies (room_id);
 
 create table if not exists public.ratings (

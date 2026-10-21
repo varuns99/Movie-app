@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchMovieInfo } from "./discover";
 import { releaseLabel, thisYear } from "./releaseDates";
+import { identityKey } from "./titles";
 import type { Movie, MovieCandidate } from "./types";
 
-const STORAGE_KEY = "two-seats:release-info-v1";
+// v2: answers are stored per kind ("movie:123" / "series:123"), since TVDB numbers them separately.
+const STORAGE_KEY = "two-seats:release-info-v2";
 // A film's status can change (a date is set, it comes out), so it is asked again
 // after this long.
 const MAX_AGE_MS = 6 * 60 * 60 * 1000;
@@ -30,9 +32,10 @@ const writeStore = (store: Record<string, ReleaseInfo>) => {
 // Remember what a search result said about a film, so it is treated correctly
 // the moment it is added (before anything is asked again).
 export const rememberRelease = (candidate: MovieCandidate) => {
-  if (!candidate.tvdbId || typeof candidate.upcoming !== "boolean") return;
+  const key = identityKey(candidate);
+  if (!key || typeof candidate.upcoming !== "boolean") return;
   const store = readStore();
-  store[String(candidate.tvdbId)] = {
+  store[key] = {
     upcoming: candidate.upcoming,
     releaseDate: candidate.releaseDate,
     checkedAt: Date.now(),
@@ -52,8 +55,9 @@ export const useReleaseStatus = (movies: Movie[], enabled: boolean) => {
     // Read from storage, not from state, so an answer arriving does not restart the loop.
     const known = readStore();
     const stale = movies.filter((movie) => {
-      if (!movie.tvdbId || movie.status === "watched" || Number(movie.year) < thisYear()) return false;
-      const entry = known[String(movie.tvdbId)];
+      const key = identityKey(movie);
+      if (!key || movie.status === "watched" || Number(movie.year) < thisYear()) return false;
+      const entry = known[key];
       return !entry || Date.now() - entry.checkedAt > MAX_AGE_MS;
     });
     if (!stale.length) return;
@@ -61,12 +65,13 @@ export const useReleaseStatus = (movies: Movie[], enabled: boolean) => {
     let cancelled = false;
     (async () => {
       for (const movie of stale) {
-        const info = await fetchMovieInfo(movie.tvdbId as number);
+        const key = identityKey(movie) as string;
+        const info = await fetchMovieInfo(movie.tvdbId as number, movie.kind);
         if (cancelled) return;
         if (typeof info.upcoming !== "boolean") continue; // Could not ask: try again on a later visit.
         const entry: ReleaseInfo = { upcoming: info.upcoming, releaseDate: info.releaseDate, checkedAt: Date.now() };
         setStore((current) => {
-          const next = { ...current, [String(movie.tvdbId)]: entry };
+          const next = { ...current, [key]: entry };
           writeStore(next);
           return next;
         });
@@ -78,7 +83,10 @@ export const useReleaseStatus = (movies: Movie[], enabled: boolean) => {
   }, [movies, enabled]);
 
   const infoFor = useCallback(
-    (movie: Movie) => (movie.tvdbId ? store[String(movie.tvdbId)] : undefined),
+    (movie: Movie) => {
+      const key = identityKey(movie);
+      return key ? store[key] : undefined;
+    },
     [store],
   );
 

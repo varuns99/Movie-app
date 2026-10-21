@@ -475,11 +475,16 @@ const searchVariants = (query) => {
 // so "spiderman brand n" starts "Spider-Man: Brand New Day". A match on the
 // film's own title counts for more than one on a translation or alias, so a
 // foreign film that is merely called the same in English comes after the real one.
-const matchKey = (text) =>
-  titleKey(text)
+// A leading "the", "a" or "an" is ignored too ("walking dead" = "The Walking Dead"),
+// as long as other words remain.
+const LEADING_ARTICLES = new Set(["the", "a", "an"]);
+const matchKey = (text) => {
+  const words = titleKey(text)
     .split(" ")
-    .filter((word) => word && word !== "and")
-    .join("");
+    .filter((word) => word && word !== "and");
+  if (words.length > 1 && LEADING_ARTICLES.has(words[0])) words.shift();
+  return words.join("");
+};
 
 const rankAgainst = (names, want) => {
   if (!want) return 4;

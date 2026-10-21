@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { demoCandidates, moods } from "./demoData";
-import { getCachedMovieSuggestions, hasMovieProxy, searchMovies } from "./movieSearch";
+import { getCachedMovieSuggestions, hasMovieProxy, searchMovies, type SearchKind } from "./movieSearch";
 import {
   displayNameFor,
   requestPasswordReset,
@@ -29,7 +29,7 @@ import { ChipSelect } from "./ChipSelect";
 import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
 import { listSummary, yearSummary } from "./filterText";
-import { altTitle, titleKey } from "./titles";
+import { altTitle, isSameItem, titleKey, titleMeta } from "./titles";
 import { normalizeTrailerUrl } from "./trailers";
 import { LockedFeature } from "./LockedFeature";
 import { ProfileMenu } from "./ProfileMenu";
@@ -302,6 +302,7 @@ function App() {
   const [view, setView] = useState<View>(() => viewFromHash());
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MovieCandidate[]>([]);
+  const [searchKind, setSearchKind] = useState<SearchKind>("any");
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
@@ -401,7 +402,7 @@ function App() {
     }
 
     const instantSuggestions = hasMovieProxy
-      ? getCachedMovieSuggestions(trimmed)
+      ? getCachedMovieSuggestions(trimmed, searchKind)
       : demoCandidates.filter((movie) => movie.title.toLowerCase().includes(trimmed.toLowerCase()));
     setSearchResults(instantSuggestions);
     setSearchError("");
@@ -412,13 +413,13 @@ function App() {
       setSearchError("");
       try {
         if (hasMovieProxy) {
-          const proxyResults = await searchMovies(trimmed);
+          const proxyResults = await searchMovies(trimmed, searchKind);
           if (active) {
-            const mergedResults = [...proxyResults, ...getCachedMovieSuggestions(trimmed)].filter(
+            const mergedResults = [...proxyResults, ...getCachedMovieSuggestions(trimmed, searchKind)].filter(
               (movie, index, all) =>
-                all.findIndex((item) => item.tvdbId === movie.tvdbId && item.title === movie.title) === index,
+                all.findIndex((item) => item.tvdbId === movie.tvdbId && item.kind === movie.kind && item.title === movie.title) === index,
             );
-            setSearchResults(mergedResults.slice(0, 6));
+            setSearchResults(mergedResults.slice(0, 8));
           }
         } else {
           const demoResults = demoCandidates.filter((movie) => movie.title.toLowerCase().includes(trimmed.toLowerCase()));
@@ -439,7 +440,7 @@ function App() {
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [query, movies]);
+  }, [query, movies, searchKind]);
 
   const genres = useMemo(
     () => [...new Set(movies.flatMap((movie) => movie.genres))].sort((a, b) => a.localeCompare(b)),
@@ -539,16 +540,28 @@ function App() {
     (async () => {
       for (const movie of pending) {
         if (!movie.tvdbId) continue;
-        const info = await fetchMovieInfo(movie.tvdbId);
+        const info = await fetchMovieInfo(movie.tvdbId, movie.kind);
         if (!info.language && !info.englishTitle && !info.imdbId && !info.checked) continue; // Try again on a later visit.
 
-        const patch: { language?: string; englishTitle?: string; title?: string; imdbId?: string; trailerUrl?: string } = {};
+        const patch: {
+          language?: string;
+          englishTitle?: string;
+          title?: string;
+          imdbId?: string;
+          trailerUrl?: string;
+          seasons?: number;
+          seriesStatus?: string;
+        } = {};
         // An unconfirmed (TVDB-only) language may fill a gap but never overwrites a stored one.
         if (info.language && info.language !== movie.language && (info.checked || !movie.language)) {
           patch.language = info.language;
         }
         if (info.englishTitle && info.englishTitle !== movie.englishTitle) patch.englishTitle = info.englishTitle;
         if (info.imdbId && info.imdbId !== movie.imdbId) patch.imdbId = info.imdbId;
+        if (movie.kind === "series") {
+          if (info.seasons && info.seasons !== movie.seasons) patch.seasons = info.seasons;
+          if (info.seriesStatus && info.seriesStatus !== movie.seriesStatus) patch.seriesStatus = info.seriesStatus;
+        }
         // Swap in an English trailer when the saved one is something else (e.g. French).
         if (info.trailerUrl && /^en/i.test(info.trailerLanguage ?? "") && info.trailerUrl !== movie.trailerUrl) {
           patch.trailerUrl = info.trailerUrl;
@@ -581,7 +594,7 @@ function App() {
   };
 
   const addMovie = (candidate: MovieCandidate) => {
-    const exists = movies.some((movie) => movie.title.toLowerCase() === candidate.title.toLowerCase());
+    const exists = movies.some((movie) => isSameItem(movie, candidate));
     if (exists) {
       setSearchError("That one is already on your couch list.");
       return;
@@ -698,6 +711,8 @@ function App() {
               searchResults={searchResults}
               onManual={() => setManualOpen(true)}
               onAdd={addMovie}
+              searchKind={searchKind}
+              onSearchKind={setSearchKind}
             />
 
             <SegmentedToggle
@@ -896,6 +911,8 @@ function App() {
               searchResults={searchResults}
               onManual={() => setManualOpen(true)}
               onAdd={addMovie}
+              searchKind={searchKind}
+              onSearchKind={setSearchKind}
             />
 
             <section className="taste-strip">
@@ -1185,7 +1202,15 @@ type AddMovieBarProps = {
   searchResults: MovieCandidate[];
   onManual: () => void;
   onAdd: (candidate: MovieCandidate) => void;
+  searchKind: SearchKind;
+  onSearchKind: (kind: SearchKind) => void;
 };
+
+const searchKinds: { value: SearchKind; label: string }[] = [
+  { value: "any", label: "All" },
+  { value: "movie", label: "Movies" },
+  { value: "series", label: "Series" },
+];
 
 function AddMovieBar({
   movies,
@@ -1196,15 +1221,17 @@ function AddMovieBar({
   searchResults,
   onManual,
   onAdd,
+  searchKind,
+  onSearchKind,
 }: AddMovieBarProps) {
   return (
-    <section className="search-shell" aria-label="Add a movie">
+    <section className="search-shell" aria-label="Add a movie or series">
       <div className="search-field">
         <svg className="search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.6" />
           <line x1="13.6" y1="13.6" x2="17.5" y2="17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a movie to add" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a movie or series to add" />
         {query && (
           <button type="button" className="clear-search" aria-label="Clear search" onClick={() => setQuery("")}>
             ×
@@ -1214,6 +1241,21 @@ function AddMovieBar({
       {query && (
         <div className="search-dropdown">
           <div className="dropdown-head">
+            {hasMovieProxy && (
+              <div className="kind-tabs" role="group" aria-label="Look for">
+                {searchKinds.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={searchKind === option.value}
+                    className={searchKind === option.value ? "active" : ""}
+                    onClick={() => onSearchKind(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <span className={hasMovieProxy ? "live-status" : "live-status demo"}>
               <span className="live-dot" aria-hidden="true" />
               {hasMovieProxy ? "Live search" : "Demo search"}
@@ -1226,14 +1268,15 @@ function AddMovieBar({
               <p className="dropdown-state">Nothing surfaced. Try another spelling, or add it manually below.</p>
             )}
             {searchResults.map((movie) => {
-              const alreadyAdded = movies.some((item) => item.title.toLowerCase() === movie.title.toLowerCase());
+              const alreadyAdded = movies.some((item) => isSameItem(item, movie));
               return (
-                <article key={`${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
+                <article key={`${movie.kind ?? "movie"}-${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
                   <img src={movie.posterUrl} alt="" />
                   <div>
                     <h3>{movie.title}</h3>
-                    <p>
-                      {movie.year} • {movie.runtime} min
+                    <p className={movie.kind === "series" ? "wrap" : undefined}>
+                      {movie.kind === "series" && <span className="kind-pill">Series</span>}
+                      {titleMeta(movie)}
                     </p>
                     {isUpcomingCandidate(movie) && (
                       <small className="upcoming-tag">Not out yet · {releaseLabel(movie.releaseDate, movie.year)}</small>

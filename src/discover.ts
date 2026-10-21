@@ -203,7 +203,11 @@ export const findLanguageMismatches = async (
   language: string,
   signal: AbortSignal,
 ): Promise<Set<string>> => {
-  const ids = movies.map((movie) => movie.tvdbId).filter((id): id is number => typeof id === "number");
+  // The language cross-check (Wikidata) is for films only.
+  const ids = movies
+    .filter((movie) => movie.kind !== "series")
+    .map((movie) => movie.tvdbId)
+    .filter((id): id is number => typeof id === "number");
   if (!movieProxyUrl || language === "any" || !ids.length) return new Set();
 
   const patience = new AbortController();
@@ -232,6 +236,7 @@ export const findLanguageMismatches = async (
 // asked, in which case the language is only TVDB's unconfirmed label.
 export const fetchMovieInfo = async (
   tvdbId: number,
+  kind: "movie" | "series" = "movie",
 ): Promise<{
   title?: string;
   language?: string;
@@ -241,11 +246,13 @@ export const fetchMovieInfo = async (
   releaseDate?: string;
   trailerUrl?: string;
   trailerLanguage?: string;
+  seasons?: number;
+  seriesStatus?: string;
   checked: boolean;
 }> => {
   if (!movieProxyUrl) return { checked: false };
   try {
-    const url = new URL("/movie", movieProxyUrl);
+    const url = new URL(kind === "series" ? "/series" : "/movie", movieProxyUrl);
     url.searchParams.set("id", String(tvdbId));
     const response = await fetch(url);
     if (!response.ok) return { checked: false };
@@ -259,6 +266,8 @@ export const fetchMovieInfo = async (
       releaseDate: body.result?.releaseDate || undefined,
       trailerUrl: body.result?.trailerUrl || undefined,
       trailerLanguage: body.result?.trailerLanguage || undefined,
+      seasons: body.result?.seasons || undefined,
+      seriesStatus: body.result?.seriesStatus || undefined,
       checked: Boolean(body.result?.languageChecked),
     };
   } catch {
@@ -271,7 +280,7 @@ export const fetchMovieInfo = async (
 export const loadMovieDetails = async (movie: MovieCandidate): Promise<MovieCandidate> => {
   if (movie.source !== "tvdb" || !movie.tvdbId || !movieProxyUrl) return movie;
 
-  const url = new URL("/movie", movieProxyUrl);
+  const url = new URL(movie.kind === "series" ? "/series" : "/movie", movieProxyUrl);
   url.searchParams.set("id", String(movie.tvdbId));
   const response = await fetch(url);
   if (!response.ok) return movie;

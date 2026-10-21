@@ -2311,3 +2311,58 @@ body {
     margin-inline: auto;
   }
 }
+
+/* ---------- Search: movies and series ---------- */
+
+.dropdown-head {
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.kind-tabs {
+  display: inline-flex;
+  gap: 0.15rem;
+}
+
+.kind-tabs button {
+  min-height: 28px;
+  padding: 0 0.6rem;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.kind-tabs button:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.kind-tabs button.active {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.kind-pill {
+  display: inline-block;
+  margin-right: 0.45rem;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* A series' details line (seasons, status, episode length) wraps instead of being cut off. */
+.candidate p.wrap {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}

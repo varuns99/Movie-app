@@ -16,7 +16,7 @@ import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
 import { LockedFeature } from "./LockedFeature";
 import { listSummary, yearSummary } from "./filterText";
-import { altTitle, titleKey } from "./titles";
+import { altTitle, identityKey, titleKey } from "./titles";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
 import { RouletteStage } from "./RouletteStage";
@@ -59,15 +59,17 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
     const list = saved ?? [];
     const keys = new Set<string>();
     list.forEach((movie) => {
-      if (movie.tvdbId) keys.add(`id:${movie.tvdbId}`);
-      keys.add(`t:${titleKey(movie.title)}|${movie.year}`);
-      if (movie.englishTitle) keys.add(`t:${titleKey(movie.englishTitle)}|${movie.year}`);
+      const id = identityKey(movie);
+      if (id) keys.add(`id:${id}`);
+      keys.add(`t:${movie.kind}:${titleKey(movie.title)}|${movie.year}`);
+      if (movie.englishTitle) keys.add(`t:${movie.kind}:${titleKey(movie.englishTitle)}|${movie.year}`);
     });
     return keys;
   }, [saved]);
   const isSaved = useMemo(
     () => (movie: MovieCandidate) =>
-      Boolean(movie.tvdbId && savedKeys.has(`id:${movie.tvdbId}`)) || savedKeys.has(`t:${titleKey(movie.title)}|${movie.year}`),
+      Boolean(identityKey(movie) && savedKeys.has(`id:${identityKey(movie)}`)) ||
+      savedKeys.has(`t:${movie.kind ?? "movie"}:${titleKey(movie.title)}|${movie.year}`),
     [savedKeys],
   );
   const isSavedRef = useRef(isSaved);
@@ -107,7 +109,7 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
 
   // Anything added to the watchlist since the list loaded drops out at once.
   const items = useMemo(
-    () => movies.filter((movie) => !signedIn || !isSaved(movie)).map((movie) => ({ ...movie, id: String(movie.tvdbId ?? movie.title) })),
+    () => movies.filter((movie) => !signedIn || !isSaved(movie)).map((movie) => ({ ...movie, id: identityKey(movie) ?? movie.title })),
     [movies, signedIn, isSaved],
   );
   const roulette = useRoulette(items);

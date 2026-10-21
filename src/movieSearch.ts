@@ -31,7 +31,7 @@ const writeSuggestionCache = (movies: MovieCandidate[]) => {
     const merged = [...movies, ...existing].filter(
       (movie, index, all) =>
         typeof movie?.title === "string" &&
-        all.findIndex((item) => item.tvdbId === movie.tvdbId && item.title === movie.title) === index,
+        all.findIndex((item) => item.tvdbId === movie.tvdbId && item.kind === movie.kind && item.title === movie.title) === index,
     );
     localStorage.setItem(suggestionCacheKey, JSON.stringify(merged.slice(0, maxCachedSuggestions)));
   } catch {
@@ -42,11 +42,15 @@ const writeSuggestionCache = (movies: MovieCandidate[]) => {
 const candidateSearchText = (movie: MovieCandidate) =>
   [movie.title, ...(movie.searchTerms ?? [])].map(normalizeSearchText);
 
-export const getCachedMovieSuggestions = (query: string): MovieCandidate[] => {
+// What the search box looks for: movies, series, or both.
+export type SearchKind = "any" | "movie" | "series";
+
+export const getCachedMovieSuggestions = (query: string, kind: SearchKind = "any"): MovieCandidate[] => {
   const normalizedQuery = normalizeSearchText(query);
   if (normalizedQuery.length < 2) return [];
 
   return readSuggestionCache()
+    .filter((movie) => kind === "any" || (movie.kind ?? "movie") === kind)
     .map((movie) => {
       const terms = candidateSearchText(movie);
       const score = terms.some((term) => term.startsWith(normalizedQuery))
@@ -64,11 +68,12 @@ export const getCachedMovieSuggestions = (query: string): MovieCandidate[] => {
     .map(({ movie }) => movie);
 };
 
-export const searchMovies = async (query: string): Promise<MovieCandidate[]> => {
+export const searchMovies = async (query: string, kind: SearchKind = "any"): Promise<MovieCandidate[]> => {
   if (!proxyUrl || query.trim().length < 2) return [];
 
   const searchUrl = new URL("/search", proxyUrl);
   searchUrl.searchParams.set("query", query);
+  searchUrl.searchParams.set("kind", kind);
 
   const searchResponse = await fetch(searchUrl);
   if (!searchResponse.ok) {

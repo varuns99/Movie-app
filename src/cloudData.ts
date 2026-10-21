@@ -132,6 +132,10 @@ export const renameMember = async (roomId: string, userId: string, displayName: 
 type MovieRow = {
   id: string;
   source: Movie["source"];
+  // The next three arrive only once the series columns exist in the database.
+  kind?: Movie["kind"] | null;
+  seasons?: number | null;
+  series_status?: string | null;
   tvdb_id: number | null;
   title: string;
   year: string;
@@ -154,6 +158,9 @@ type MovieRow = {
 const toMovie = (row: MovieRow): Movie => ({
   id: row.id,
   source: row.source,
+  kind: row.kind === "series" ? "series" : "movie",
+  seasons: row.seasons ?? undefined,
+  seriesStatus: row.series_status ?? undefined,
   tvdbId: row.tvdb_id ?? undefined,
   title: row.title,
   year: row.year,
@@ -240,6 +247,11 @@ export const useCloudMovies = (roomId: string | null) => {
             english_title: candidate.englishTitle ?? null,
             imdb_id: candidate.imdbId ?? null,
             added_by: userId,
+            // Only a series carries these, so adding a movie works even before the
+            // database has the series columns.
+            ...(candidate.kind === "series"
+              ? { kind: "series", seasons: candidate.seasons ?? null, series_status: candidate.seriesStatus ?? null }
+              : {}),
           })
           .select("*")
           .single();
@@ -290,7 +302,15 @@ export const useCloudMovies = (roomId: string | null) => {
   const updateInfo = useCallback(
     async (
       movieId: string,
-      patch: { language?: string; englishTitle?: string; title?: string; imdbId?: string; trailerUrl?: string },
+      patch: {
+        language?: string;
+        englishTitle?: string;
+        title?: string;
+        imdbId?: string;
+        trailerUrl?: string;
+        seasons?: number;
+        seriesStatus?: string;
+      },
     ): Promise<ActionResult> => {
       if (!supabase) return NOT_SET_UP;
       const columns: {
@@ -299,12 +319,16 @@ export const useCloudMovies = (roomId: string | null) => {
         title?: string;
         imdb_id?: string;
         trailer_url?: string;
+        seasons?: number;
+        series_status?: string;
       } = {};
       if (patch.language) columns.language = patch.language;
       if (patch.englishTitle) columns.english_title = patch.englishTitle;
       if (patch.title) columns.title = patch.title;
       if (patch.imdbId) columns.imdb_id = patch.imdbId;
       if (patch.trailerUrl) columns.trailer_url = patch.trailerUrl;
+      if (patch.seasons) columns.seasons = patch.seasons;
+      if (patch.seriesStatus) columns.series_status = patch.seriesStatus;
       if (!Object.keys(columns).length) return { ok: true };
       try {
         const { error: updateError } = await supabase.from("movies").update(columns).eq("id", movieId);

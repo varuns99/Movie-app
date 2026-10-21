@@ -8,6 +8,10 @@ export type Member = {
 
 export type WatchStatus = "unwatched" | "watched";
 
+// What a watchlist item is. A series is one item (no seasons or episodes tracked).
+// TVDB numbers movies and series separately, so an id only means something with its kind.
+export type TitleKind = "movie" | "series";
+
 export type Mood =
   | "cozy"
   | "funny"
@@ -26,6 +30,7 @@ export type Rating = {
 export type Movie = {
   id: string;
   source: "demo" | "tvdb" | "manual";
+  kind: TitleKind;
   tvdbId?: number;
   title: string;
   year: string;
@@ -41,6 +46,9 @@ export type Movie = {
   englishTitle?: string;
   // IMDb title id ("tt0066461"), used only to link to the film's IMDb page.
   imdbId?: string;
+  // Series only: number of regular seasons, and TVDB's status ("Continuing", "Ended", "Upcoming").
+  seasons?: number;
+  seriesStatus?: string;
   addedBy: MemberId;
   addedAt: string;
   status: WatchStatus;
@@ -50,6 +58,8 @@ export type Movie = {
 
 export type MovieCandidate = {
   source: "demo" | "tvdb" | "manual";
+  // Missing means a movie (older saved suggestions and manual picks have no kind).
+  kind?: TitleKind;
   tvdbId?: number;
   title: string;
   year: string;
@@ -60,6 +70,9 @@ export type MovieCandidate = {
   posterUrl: string;
   trailerUrl?: string;
   searchTerms?: string[];
+  // Series only: see Movie.
+  seasons?: number;
+  seriesStatus?: string;
   // True when the film is not out yet; `releaseDate` ("2027-11-05") is its earliest date still ahead.
   upcoming?: boolean;
   releaseDate?: string;
