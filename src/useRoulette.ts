@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+// A spin takes about this long, then slows down only near the end. `pace` is how
+// long a step lasts relative to the first one (1 at the start, about 5.7 at the end).
+const SPIN_MS = 3700;
+const pace = (progress: number) => 1 + 4.73 * progress ** 5;
+
 // Spin-and-land logic shared by the watchlist roulette and the logged-out
 // discovery roulette. Items only need a stable string id.
 export const useRoulette = <T extends { id: string }>(items: T[]) => {
@@ -35,6 +40,12 @@ export const useRoulette = <T extends { id: string }>(items: T[]) => {
       const start = ((from % items.length) + items.length) % items.length;
       const totalSteps = loops * items.length + ((winnerIndex - start + items.length) % items.length);
 
+      // Scale the steps so the whole spin lasts about SPIN_MS, but never faster than
+      // 32ms a step (a blur) or slower than 55ms (a short list would drag).
+      let paceTotal = 0;
+      for (let step = 0; step < totalSteps; step++) paceTotal += pace(step / totalSteps);
+      const stepMs = Math.max(32, Math.min(55, SPIN_MS / paceTotal));
+
       setSpinning(true);
       setSelectedId(null);
 
@@ -46,7 +57,7 @@ export const useRoulette = <T extends { id: string }>(items: T[]) => {
           setSpinning(false);
           return;
         }
-        timer.current = window.setTimeout(() => tick(step + 1), 55 + 320 * (step / totalSteps) ** 3);
+        timer.current = window.setTimeout(() => tick(step + 1), stepMs * pace(step / totalSteps));
       };
 
       tick(0);
