@@ -16,7 +16,7 @@ import { EmptyState } from "./EmptyState";
 import { FiltersSheet } from "./FiltersSheet";
 import { LockedFeature } from "./LockedFeature";
 import { listSummary, yearSummary } from "./filterText";
-import { altTitle, identityKey, titleKey } from "./titles";
+import { altTitle, identityKey, titleKey, titleMeta } from "./titles";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
 import { RouletteStage } from "./RouletteStage";
@@ -88,7 +88,7 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
 
         // The list shows right away; Spin waits a moment while Wikidata
         // double-checks the language, then films in other languages drop out.
-        if (!result.sample && filters.language !== "any") {
+        if (!result.sample && filters.language !== "any" && filters.kind === "movie") {
           setVerifying(true);
           const wrong = await findLanguageMismatches(result.movies, filters.language, controller.signal);
           if (controller.signal.aborted) return;
@@ -134,12 +134,17 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
   }, [selected]);
 
   const languageLabel = DISCOVER_LANGUAGES.find((language) => language.code === filters.language)?.label ?? "Any language";
+  const word = filters.kind === "series" ? "series" : "movies";
   const filterSummary = [
+    signedIn ? (filters.kind === "series" ? "Series" : "Movies") : "",
     languageLabel,
     yearSummary(filters.yearFrom, filters.yearTo, ALL_YEARS[ALL_YEARS.length - 1], ALL_YEARS[0]),
     listSummary(filters.genres, "Any genre"),
-    filters.maxRuntime >= MAX_DISCOVER_RUNTIME ? "Any length" : `Up to ${filters.maxRuntime} min`,
-  ].join(" · ");
+    // A series' episode length is not comparable with a film's, so the length limit is for films.
+    filters.kind === "series" ? "" : filters.maxRuntime >= MAX_DISCOVER_RUNTIME ? "Any length" : `Up to ${filters.maxRuntime} min`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <section className="panel roulette-panel discover">
@@ -148,9 +153,27 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
         <span>{loadState === "ready" ? `${items.length} to spin` : ""}</span>
       </div>
 
+      {signedIn && (
+        <div className="kind-tabs discover-kind" role="group" aria-label="Look for">
+          {(["movie", "series"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={filters.kind === option}
+              className={filters.kind === option ? "active" : ""}
+              disabled={roulette.spinning}
+              onClick={() => setFilters((current) => ({ ...current, kind: option }))}
+            >
+              {option === "movie" ? "Movies" : "Series"}
+            </button>
+          ))}
+        </div>
+      )}
+
       <FiltersSheet
         applied={filters}
         defaults={defaultDiscoverFilters}
+        resetTo={(draft) => ({ ...defaultDiscoverFilters, kind: draft.kind })}
         onApply={setFilters}
         summary={filterSummary}
         disabled={roulette.spinning}
@@ -193,18 +216,22 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
               years={ALL_YEARS}
               onChange={(yearFrom, yearTo) => change({ yearFrom, yearTo })}
             />
-            <label>
-              Max runtime
-              <input
-                type="range"
-                min="80"
-                max={MAX_DISCOVER_RUNTIME}
-                step="5"
-                value={draft.maxRuntime}
-                onChange={(event) => change({ maxRuntime: Number(event.target.value) })}
-              />
-              <strong>{draft.maxRuntime >= MAX_DISCOVER_RUNTIME ? "Any" : `${draft.maxRuntime} min`}</strong>
-            </label>
+            {draft.kind === "series" ? (
+              <p className="filter-note">The length limit is for movies; it doesn&apos;t apply to series.</p>
+            ) : (
+              <label>
+                Max runtime
+                <input
+                  type="range"
+                  min="80"
+                  max={MAX_DISCOVER_RUNTIME}
+                  step="5"
+                  value={draft.maxRuntime}
+                  onChange={(event) => change({ maxRuntime: Number(event.target.value) })}
+                />
+                <strong>{draft.maxRuntime >= MAX_DISCOVER_RUNTIME ? "Any" : `${draft.maxRuntime} min`}</strong>
+              </label>
+            )}
             <ChipSelect
               label="Genre"
               options={DISCOVER_GENRES.map((genre) => ({ value: genre, label: genre }))}
@@ -226,12 +253,12 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
                 </div>
               ))}
             </div>
-            <p className="discover-note">Finding movies...</p>
+            <p className="discover-note">Finding {word}...</p>
           </>
         )}
         {loadState === "error" && (
           <div className="empty-state">
-            <h3>Couldn&apos;t load movies</h3>
+            <h3>Couldn&apos;t load {word}</h3>
             <p>Check your connection and try again.</p>
             <button type="button" onClick={() => setAttempt((current) => current + 1)}>
               Try again
@@ -239,7 +266,14 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
           </div>
         )}
         {loadState === "ready" && !items.length && (
-          <EmptyState title="No movies match" body="Widen the release years or loosen a filter and try again." />
+          <EmptyState
+            title={filters.kind === "series" ? "No series match" : "No movies match"}
+            body={
+              filters.kind === "series"
+                ? "Widen the years the series first aired in, or loosen a filter, and try again."
+                : "Widen the release years or loosen a filter and try again."
+            }
+          />
         )}
         {loadState === "ready" && items.length > 0 && (
           <>
@@ -278,7 +312,7 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
           altTitle={altTitle(details.title, details.englishTitle)}
           posterUrl={details.posterUrl}
           imdbId={details.imdbId}
-          meta={[details.year, `${details.runtime} min`, details.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
+          meta={[titleMeta(details, " · "), details.genres.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
           synopsis={details.synopsis}
           loadingSynopsis={detailsLoading}
           onClose={pick.close}

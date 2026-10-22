@@ -5,6 +5,8 @@ import { normalizeTrailerUrl } from "./trailers";
 import type { MovieCandidate } from "./types";
 
 export type DiscoverFilters = {
+  // Browse films or series (signed-in Discover has a switch; signed out is films only).
+  kind: "movie" | "series";
   language: string;
   yearFrom: number;
   yearTo: number;
@@ -18,6 +20,7 @@ export const FIRST_YEAR = 1940;
 
 // English, the latest three release years (2024 to 2026 in 2026), any genre, up to 150 minutes.
 export const defaultDiscoverFilters: DiscoverFilters = {
+  kind: "movie",
   language: "eng",
   yearFrom: CURRENT_YEAR - 2,
   yearTo: CURRENT_YEAR,
@@ -169,7 +172,8 @@ export const discoverMovies = async (
   // Films that are not out yet are never offered.
   const keep = (movie: MovieCandidate) => !isUpcomingCandidate(movie) && !exclude?.(movie);
   if (!hasMovieProxy || !movieProxyUrl) {
-    return { movies: shuffle(filterDemoCatalog(filters).filter(keep)), sample: true };
+    // The sample catalogue is films only.
+    return { movies: filters.kind === "series" ? [] : shuffle(filterDemoCatalog(filters).filter(keep)), sample: true };
   }
 
   const url = new URL("/discover", movieProxyUrl);
@@ -179,6 +183,7 @@ export const discoverMovies = async (
   url.searchParams.set("yearFrom", String(Math.min(filters.yearFrom, filters.yearTo)));
   url.searchParams.set("yearTo", String(Math.max(filters.yearFrom, filters.yearTo)));
   url.searchParams.set("maxRuntime", String(filters.maxRuntime));
+  url.searchParams.set("kind", filters.kind);
   if (filters.language !== "any") url.searchParams.set("lang", filters.language);
   if (genres.length) url.searchParams.set("genre", genres.join(","));
 

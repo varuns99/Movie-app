@@ -2409,3 +2409,21 @@ body {
   color: var(--movie);
   box-shadow: 0 0 8px color-mix(in srgb, var(--movie) 40%, transparent);
 }
+
+/* ---------- Discover: Movies / Series switch ---------- */
+
+.discover-kind {
+  margin: 0.25rem 0 0.75rem;
+}
+
+.discover-kind button {
+  min-height: 32px;
+  padding: 0 0.9rem;
+  font-size: 0.8rem;
+}
+
+.filter-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
