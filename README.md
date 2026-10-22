@@ -70,9 +70,16 @@ Restart the dev server after adding the proxy URL.
 
 When TVDB search is connected, the app displays a required attribution link to TheTVDB.com in the footer, and notes that the product is not endorsed or certified by TheTVDB.
 
+## Movies and Series
+
+The watchlist holds movies and series. A series is one item (you add it, rate it as a whole, and mark it "finished"); seasons and episodes are not tracked. The Cloudflare Worker serves both from TheTVDB:
+
+- `/search?query=&kind=movie|series|any` (movies by default), `/movie?id=` and `/series?id=` for details, and `/discover?kind=movie|series` for browsing.
+- The watchlist table in Supabase needs three extra columns (`kind`, `seasons`, `series_status`). They are in the "Series support" part of `supabase/schema.sql`; run that part once in the Supabase SQL Editor (it is safe to run again). The app still works for films before it is run, but a series cannot be saved until it has been.
+
 ## Switching Movie Data Providers
 
-The app talks to whatever server sits behind `VITE_MOVIE_PROXY_URL` through one generic `/search?query=` contract (see `src/movieSearch.ts`), so swapping providers later (e.g. back to TMDb) only means writing a new Worker file that returns the same response shape — the React app and its types do not need to change.
+The app talks to whatever server sits behind `VITE_MOVIE_PROXY_URL` through one generic `/search?query=&kind=` contract (see `src/movieSearch.ts`) plus `/movie`, `/series` and `/discover`, so swapping providers later (e.g. back to TMDb) only means writing a new Worker file that returns the same response shape — the React app and its types do not need to change.
 
 ## Build
 

@@ -313,7 +313,7 @@ const viewLabels: Record<View, string> = { tonight: "Tonight", watchlist: "Watch
 
 const lockedViewBodies: Record<View, string> = {
   tonight: "",
-  watchlist: "Save movies, rate them together and see your shared list on any device.",
+  watchlist: "Save movies and series, rate them together and see your shared list on any device.",
   history: "Keep a record of what you've watched and how you both rated it.",
 };
 
@@ -788,8 +788,8 @@ function App() {
                     title={cloudActive ? "Your watchlist is empty" : "The list is waiting"}
                     body={
                       cloudActive
-                        ? "Search above to add your first movie. Your partner will see it too."
-                        : "Add a few movies and the app will start learning what works for both of you."
+                        ? "Search above to add your first movie or series. Your partner will see it too."
+                        : "Add a few movies or series and the app will start learning what works for both of you."
                     }
                   />
                 )}
@@ -979,7 +979,7 @@ function App() {
                   </span>
                 </>
               ) : (
-                <span>Rate a watched movie together and this will start learning your taste.</span>
+                <span>Rate something you've watched together and this will start learning your taste.</span>
               )}
             </section>
 
@@ -1100,7 +1100,7 @@ function App() {
                   title={cloudActive ? "Your watchlist is empty" : "No maybes yet"}
                   body={
                     cloudActive
-                      ? "Search above to add your first movie. Your partner will see it too."
+                      ? "Search above to add your first movie or series. Your partner will see it too."
                       : "Start with one comfort pick and one wild card. That is usually enough to get moving."
                   }
                 />
@@ -1113,7 +1113,9 @@ function App() {
           <section className="panel history-panel">
             <div className="section-heading">
               <h2>History</h2>
-              <span>{watchedMovies.length} nights</span>
+              <span>
+                {watchedMovies.length} {watchedMovies.length === 1 ? "title" : "titles"}
+              </span>
             </div>
             {watchedMovies.length ? (
               <div className="history-list">
@@ -1126,8 +1128,13 @@ function App() {
                         <small className="alt-title">({altTitle(movie.title, movie.englishTitle)})</small>
                       )}
                       <p>
+                        <span className={movie.kind === "series" ? "kind-pill" : "kind-pill movie"}>
+                          {movie.kind === "series" ? "Series" : "Movie"}
+                        </span>
+                        {movie.kind === "series" ? "Finished " : ""}
                         {formatDate(movie.watchedAt)} • Added by {memberNameOf(members, movie.addedBy)}
                       </p>
+                      {movie.kind === "series" && <small>{titleMeta(movie)}</small>}
                       <small>{ratingLine(movie, members)}</small>
                       {members
                         .filter((member) => movie.ratings[member.id]?.note)

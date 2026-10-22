@@ -2427,3 +2427,10 @@ body {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+/* History: the first line (tag, date, who added it) wraps instead of being cut off. */
+.history-list p {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
