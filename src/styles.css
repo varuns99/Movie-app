@@ -1912,6 +1912,10 @@ body {
   min-height: 100dvh;
   /* The bar (64px), its gap to the screen edge, and the bead rising 28px above it. */
   padding-bottom: calc(64px + 28px + 2rem + env(safe-area-inset-bottom, 0px));
+  /* A section sliding in from the right must not make the page wider for a moment:
+     phones then widen the whole page, which shifted the tab bar mid-glide. `clip`
+     (unlike `hidden`) keeps sticky headers working. */
+  overflow-x: clip;
 }
 
 /* ---------- Films that are not out yet ---------- */

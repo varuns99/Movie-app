@@ -122,6 +122,8 @@ export function TabDock({
       state.width = dock.clientWidth;
       state.target = tab.offsetLeft + tab.offsetWidth / 2;
       const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // A size change in the middle of a glide only moves the destination.
+      if (!animate && state.frame && !still) return;
       if (!animate || still || state.x < 0) {
         cancelAnimationFrame(state.frame);
         state.frame = 0;
