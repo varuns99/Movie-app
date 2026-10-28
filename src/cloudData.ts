@@ -125,6 +125,24 @@ export const renameMember = async (roomId: string, userId: string, displayName: 
   }
 };
 
+// Leaving removes only your own membership (Row Level Security allows nothing
+// else). The room and its watchlist stay, so its invite code still lets you back in.
+export const leaveRoom = async (roomId: string, userId: string): Promise<ActionResult> => {
+  if (!supabase) return NOT_SET_UP;
+  try {
+    const { error, count } = await supabase
+      .from("room_members")
+      .delete({ count: "exact" })
+      .eq("room_id", roomId)
+      .eq("user_id", userId);
+    if (error) return { ok: false, message: error.message };
+    // A blocked delete is not an error, it just removes nothing.
+    return count ? { ok: true } : { ok: false, message: "Couldn't leave the room. Please try again." };
+  } catch (caught) {
+    return { ok: false, message: messageFrom(caught) };
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Movies (the shared watchlist)
 // ---------------------------------------------------------------------------

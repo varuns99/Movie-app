@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Modal } from "./Modal";
-import { DEFAULT_ROOM_NAME, createRoom, joinRoom, renameMember, renameRoom } from "./cloudData";
+import { DEFAULT_ROOM_NAME, createRoom, joinRoom, leaveRoom, renameMember, renameRoom } from "./cloudData";
 import type { CloudMember, CloudRoom } from "./types";
 
 type CloudRoomModalProps = {
@@ -83,6 +83,7 @@ export function CloudRoomModal({
         <div className="modal-form">
           {loadError && <p className="auth-message error">{loadError}</p>}
           {error && <p className="auth-message error">{error}</p>}
+          {notice && <p className="auth-message">{notice}</p>}
 
           <form className="room-section" onSubmit={onCreate}>
             <h3>Create a room</h3>
@@ -120,6 +121,16 @@ export function CloudRoomModal({
   }
 
   const me = members.find((member) => member.userId === userId);
+  const othersInRoom = members.some((member) => member.userId !== userId);
+
+  const onLeave = () => {
+    const confirmed = window.confirm(
+      `Leave "${room.name}"?\n\nYou'll stop seeing its watchlist and history${
+        othersInRoom ? ". Everyone else in the room keeps everything" : ""
+      }. Nothing is deleted: to come back, join again with the invite code ${room.inviteCode}.`,
+    );
+    if (confirmed) run("leave", () => leaveRoom(room.id, userId), `You left "${room.name}".`);
+  };
 
   return (
     <Modal title="Your room" onClose={onClose}>
@@ -187,6 +198,17 @@ export function CloudRoomModal({
             {busy === "name" ? "Saving..." : "Save my name"}
           </button>
         </form>
+
+        <div className="room-section">
+          <h3>Leave this room</h3>
+          <p className="room-hint">
+            You'll stop seeing its watchlist and history. The room stays, so you can join again later with the invite
+            code {room.inviteCode}.
+          </p>
+          <button type="button" className="remove-button" disabled={Boolean(busy)} onClick={onLeave}>
+            {busy === "leave" ? "Leaving..." : "Leave room"}
+          </button>
+        </div>
 
         <div className="modal-actions">
           <button type="button" onClick={onClose}>
