@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 type StripItem = { id: string; title: string; posterUrl: string };
 
@@ -46,6 +46,7 @@ export function RouletteStage<T extends StripItem>({
   label,
   disabled,
   onSpin,
+  secondary,
 }: {
   items: T[];
   activeIndex: number;
@@ -55,6 +56,8 @@ export function RouletteStage<T extends StripItem>({
   disabled?: boolean;
   // `from` is the poster in the middle now, so the spin carries on from there.
   onSpin: (from: number) => void;
+  // A second button beside Spin once a pick has landed (e.g. "View pick").
+  secondary?: ReactNode;
 }) {
   const idle = !spinning && !selectedId;
   const [drift, setDrift] = useState(0);
@@ -99,6 +102,7 @@ export function RouletteStage<T extends StripItem>({
       <button type="button" className="spin-button" disabled={disabled} onClick={() => onSpin(middle)}>
         {label}
       </button>
+      {secondary && <div className="roulette-secondary">{secondary}</div>}
     </div>
   );
 }

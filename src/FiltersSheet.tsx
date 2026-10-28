@@ -13,6 +13,8 @@ type Props<T> = {
   // Plain-language recap of the applied filters, shown next to the button.
   summary: string;
   disabled?: boolean;
+  // Optional controls shown before the Filters button, on the same row.
+  leading?: ReactNode;
   // The filter controls. They edit a draft that only takes effect on Apply.
   children: (draft: T, change: (patch: Partial<T>) => void, close: () => void) => ReactNode;
 };
@@ -21,7 +23,7 @@ const sameFilters = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.strin
 
 // A "Filters" button that opens a window with the controls, a Reset at the top,
 // and Cancel / Apply filters at the bottom. Nothing changes until Apply.
-export function FiltersSheet<T>({ applied, defaults, resetTo, onApply, summary, disabled, children }: Props<T>) {
+export function FiltersSheet<T>({ applied, defaults, resetTo, onApply, summary, disabled, leading, children }: Props<T>) {
   const resetValue = (draft: T) => (resetTo ? resetTo(draft) : defaults);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<T>(applied);
@@ -35,13 +37,17 @@ export function FiltersSheet<T>({ applied, defaults, resetTo, onApply, summary, 
   return (
     <>
       <div className="filters-bar">
+        {leading}
         <button type="button" className="filters-button" disabled={disabled} onClick={openSheet}>
           <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M2 4h12M4.5 8h7M7 12h2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
           Filters
         </button>
-        <p className="filter-summary">{summary}</p>
+        {/* Cut to two lines so the Tonight screen fits; the window shows everything. */}
+        <p className="filter-summary" title={summary}>
+          {summary}
+        </p>
       </div>
 
       {open && (

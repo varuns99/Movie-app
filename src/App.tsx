@@ -670,7 +670,7 @@ function App() {
   };
 
   return (
-    <div className="app-shell" inert={!splashDone} {...swipe}>
+    <div className={activeView === "tonight" ? "app-shell fit-screen" : "app-shell"} inert={!splashDone} {...swipe}>
       <header className="topbar">
         <div className="brand">
           <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
@@ -720,7 +720,7 @@ function App() {
           </p>
         )}
         {!user && !authLoading && (
-          <div hidden={activeView !== "tonight"}>
+          <div className="tonight-fill" hidden={activeView !== "tonight"}>
             <DiscoverView
               onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
               onTrailer={setTrailerMovie}
@@ -900,12 +900,16 @@ function App() {
                         label={roulette.spinning ? "Choosing..." : "Spin roulette"}
                         disabled={roulette.spinning}
                         onSpin={roulette.spin}
+                        secondary={
+                          selectedMovie &&
+                          !pick.open &&
+                          !pick.waiting && (
+                            <button type="button" className="view-pick" onClick={pick.show}>
+                              View pick
+                            </button>
+                          )
+                        }
                       />
-                      {selectedMovie && !pick.open && !pick.waiting && (
-                        <button type="button" className="link-button view-pick" onClick={pick.show}>
-                          View tonight&apos;s pick
-                        </button>
-                      )}
                     </>
                   ) : (
                     <EmptyState title="No titles match" body="Loosen a filter and the roulette wheel will behave itself again." />
@@ -947,7 +951,7 @@ function App() {
         )}
 
         {user && !showSetup && discoverVisited && (
-          <div hidden={activeView !== "tonight" || tonightMode !== "discover"}>
+          <div className="tonight-fill" hidden={activeView !== "tonight" || tonightMode !== "discover"}>
             <DiscoverView
               saved={movies}
               onSave={(candidate) => cloudMovies.add(candidate, user.id)}

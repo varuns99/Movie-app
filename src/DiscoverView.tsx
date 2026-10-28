@@ -153,24 +153,25 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
         <span>{loadState === "ready" ? `${items.length} to spin` : ""}</span>
       </div>
 
-      {signedIn && (
-        <div className="kind-tabs discover-kind" role="group" aria-label="Look for">
-          {(["movie", "series"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={filters.kind === option}
-              className={filters.kind === option ? "active" : ""}
-              disabled={roulette.spinning}
-              onClick={() => setFilters((current) => ({ ...current, kind: option }))}
-            >
-              {option === "movie" ? "Movies" : "Series"}
-            </button>
-          ))}
-        </div>
-      )}
-
       <FiltersSheet
+        leading={
+          signedIn && (
+            <div className="kind-tabs discover-kind" role="group" aria-label="Look for">
+              {(["movie", "series"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={filters.kind === option}
+                  className={filters.kind === option ? "active" : ""}
+                  disabled={roulette.spinning}
+                  onClick={() => setFilters((current) => ({ ...current, kind: option }))}
+                >
+                  {option === "movie" ? "Movies" : "Series"}
+                </button>
+              ))}
+            </div>
+          )
+        }
         applied={filters}
         defaults={defaultDiscoverFilters}
         resetTo={(draft) => ({ ...defaultDiscoverFilters, kind: draft.kind })}
@@ -289,21 +290,27 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
                 setSaveError("");
                 roulette.spin(from);
               }}
+              secondary={
+                selected &&
+                !pick.open &&
+                !pick.waiting && (
+                  <button type="button" className="view-pick" onClick={pick.show}>
+                    View pick
+                  </button>
+                )
+              }
             />
-            {selected && !pick.open && !pick.waiting && (
-              <button type="button" className="link-button view-pick" onClick={pick.show}>
-                View tonight&apos;s pick
-              </button>
-            )}
-            {addedTitle && (
-              <p className="discover-note added-note" role="status">
-                Added &ldquo;{addedTitle}&rdquo; to your watchlist.
-              </p>
-            )}
-            {sample && <p className="discover-note">Showing sample picks. Live movie search isn&apos;t set up here.</p>}
           </>
         )}
       </div>
+      {loadState === "ready" && items.length > 0 && addedTitle && (
+        <p className="discover-note added-note" role="status">
+          Added &ldquo;{addedTitle}&rdquo; to your watchlist.
+        </p>
+      )}
+      {loadState === "ready" && items.length > 0 && sample && (
+        <p className="discover-note">Showing sample picks. Live movie search isn&apos;t set up here.</p>
+      )}
 
       {details && pick.open && (
         <PickWindow

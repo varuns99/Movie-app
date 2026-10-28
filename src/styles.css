@@ -171,7 +171,7 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.5rem 0 1rem;
+  padding: 0.25rem 0 0.75rem;
 }
 
 .brand {
@@ -368,7 +368,7 @@ h3 {
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .section-heading h2 {
@@ -426,7 +426,7 @@ input[type="range"] {
 .roulette-stage {
   display: grid;
   gap: 1rem;
-  margin-top: 1.25rem;
+  margin-top: 1rem;
 }
 
 .roulette-strip {
@@ -533,7 +533,7 @@ input[type="range"] {
 }
 
 .search-field input {
-  min-height: 52px;
+  min-height: 48px;
   padding: 0 2.9rem;
   border-radius: var(--radius-control);
   background: var(--surface);
@@ -1588,7 +1588,7 @@ input[type="range"] {
 /* ---------- Roulette spacing ---------- */
 
 .roulette-panel .roulette-stage {
-  margin-top: 1.25rem;
+  margin-top: 1rem;
 }
 
 /* ---------- Filters button, summary and window ---------- */
@@ -1613,12 +1613,18 @@ input[type="range"] {
 }
 
 .filter-summary {
-  flex: 1 1 14rem;
+  /* Beside the button when there is room, underneath otherwise; at most two lines. */
+  display: -webkit-box;
+  flex: 1 1 10rem;
   min-width: 0;
   margin: 0;
+  overflow: hidden;
   color: var(--muted);
   font-size: 0.8rem;
   line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .sheet-body {
@@ -1875,7 +1881,7 @@ body {
 .segmented button {
   position: relative;
   z-index: 1;
-  min-height: 44px;
+  min-height: 38px;
   padding: 0 0.15rem;
   border: 0;
   border-radius: 999px;
@@ -1911,7 +1917,7 @@ body {
   flex-direction: column;
   min-height: 100dvh;
   /* The bar (64px), its gap to the screen edge, and the bead rising 28px above it. */
-  padding-bottom: calc(64px + 28px + 2rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(64px + 28px + 1.5rem + env(safe-area-inset-bottom, 0px));
   /* A section sliding in from the right must not make the page wider for a moment:
      phones then widen the whole page, which shifted the tab bar mid-glide. `clip`
      (unlike `hidden`) keeps sticky headers working. */
@@ -2430,7 +2436,7 @@ body {
 /* ---------- Discover: Movies / Series switch ---------- */
 
 .discover-kind {
-  margin: 0.25rem 0 0.75rem;
+  margin: 0;
 }
 
 .discover-kind button {
@@ -2605,5 +2611,113 @@ body {
 
   .dock-bead {
     box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+  }
+}
+
+/* ---------- After a spin: Spin and "View pick" side by side ---------- */
+
+.roulette-carousel .roulette-secondary {
+  position: absolute;
+  top: calc(100% - 54px);
+  right: 0;
+  left: calc(50% + 0.375rem);
+}
+
+.roulette-secondary > button {
+  width: 100%;
+  min-height: 54px;
+}
+
+.roulette-carousel:has(.roulette-secondary) .spin-button {
+  right: calc(50% + 0.375rem);
+}
+
+/* ---------- Tonight fits on one phone screen ---------- */
+
+/* The carousel area holds, besides the posters (2:3): the room above and below
+   them, the title under them, and the Spin row once the button has moved down. */
+.roulette-stage {
+  --poster-max: clamp(96px, 30vw, 148px);
+  --stage-extra: calc(1.6rem + 1.9rem + 1rem + 54px);
+}
+
+/* On phones Tonight does not scroll. The page is the screen's height; the
+   roulette panel keeps its natural size when there is room, and when there is not,
+   the carousel shrinks (smaller posters) until everything fits. Below 640px of
+   height even the smallest posters would not fit, so the page scrolls as usual. */
+@media (max-width: 719px) and (min-height: 640px) {
+  .app-shell.fit-screen > .view {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .fit-screen .tonight-fill:not([hidden]),
+  .fit-screen .panel.roulette-panel {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .fit-screen .roulette-stage:has(.roulette-carousel) {
+    container-type: size;
+    flex: 0 1 calc(var(--poster-max) * 1.5 + var(--stage-extra));
+    min-height: calc(56px * 1.5 + var(--stage-extra));
+    /* Before the first spin the carousel sits in the middle of its space, and moves up
+       as the Spin button slides underneath it. */
+    align-content: center;
+  }
+
+  .fit-screen .roulette-stage .coverflow {
+    --w: clamp(56px, calc((100cqh - var(--stage-extra)) / 1.5), var(--poster-max));
+  }
+}
+
+@media (max-width: 719px) {
+  .panel.roulette-panel {
+    padding: 1rem;
+  }
+}
+
+/* Short phones (e.g. iPhone SE): tighter spacing so Tonight still fits. */
+@media (max-width: 719px) and (max-height: 700px) {
+  .app-shell {
+    padding-bottom: calc(64px + 28px + 0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .topbar {
+    padding: 0 0 0.5rem;
+  }
+
+  .app-shell.fit-screen > .view {
+    gap: 0.6rem;
+  }
+
+  .search-field input {
+    min-height: 44px;
+  }
+
+  .segmented button {
+    min-height: 34px;
+  }
+
+  .panel.roulette-panel {
+    padding: 0.75rem;
+  }
+
+  .section-heading {
+    margin-bottom: 0.5rem;
+  }
+
+  .roulette-panel .roulette-stage {
+    margin-top: 0.75rem;
+  }
+
+  .discover .filter-summary {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
   }
 }
