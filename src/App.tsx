@@ -61,7 +61,11 @@ const moodLabels: Record<Mood, string> = {
 const todayIso = () => new Date().toISOString();
 
 // v3: saved films are looked at once more so a trailer in the wrong language can be replaced.
-const LANGUAGE_CHECK_KEY = "movie-night-roulette:movie-info-checked-v3";
+// v4: everything is looked at once more so series get repaired: before 0.1.39 the app
+// looked every saved title up as a film, and a film can share a series' TVDB id (the
+// series "Down the Road" got the Hindi film "Bhool Bhulaiyaa 3"'s English title,
+// language and IMDb link).
+const LANGUAGE_CHECK_KEY = "movie-night-roulette:movie-info-checked-v4";
 
 const readCheckedLanguages = () => {
   try {
@@ -591,10 +595,10 @@ function App() {
 
         const patch: {
           language?: string;
-          englishTitle?: string;
+          englishTitle?: string | null;
           title?: string;
-          imdbId?: string;
-          trailerUrl?: string;
+          imdbId?: string | null;
+          trailerUrl?: string | null;
           seasons?: number;
           seriesStatus?: string;
         } = {};
@@ -607,6 +611,14 @@ function App() {
         if (movie.kind === "series") {
           if (info.seasons && info.seasons !== movie.seasons) patch.seasons = info.seasons;
           if (info.seriesStatus && info.seriesStatus !== movie.seriesStatus) patch.seriesStatus = info.seriesStatus;
+          // A full answer about the series is the final word: anything it does not have
+          // (an English title, an IMDb link, a trailer) was picked up from a film with the
+          // same id, so it is cleared.
+          if (info.checked && info.title) {
+            if ((info.englishTitle ?? null) !== (movie.englishTitle ?? null)) patch.englishTitle = info.englishTitle ?? null;
+            if ((info.imdbId ?? null) !== (movie.imdbId ?? null)) patch.imdbId = info.imdbId ?? null;
+            if ((info.trailerUrl ?? null) !== (movie.trailerUrl ?? null)) patch.trailerUrl = info.trailerUrl ?? null;
+          }
         }
         // Swap in an English trailer when the saved one is something else (e.g. French).
         if (info.trailerUrl && /^en/i.test(info.trailerLanguage ?? "") && info.trailerUrl !== movie.trailerUrl) {

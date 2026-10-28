@@ -316,16 +316,17 @@ export const useCloudMovies = (roomId: string | null) => {
   );
 
   // Movie facts the movie service can fill in after the fact (original language,
-  // English title). Only the fields given are written.
+  // English title). Only the fields given are written; null clears the English
+  // title, IMDb id or trailer.
   const updateInfo = useCallback(
     async (
       movieId: string,
       patch: {
         language?: string;
-        englishTitle?: string;
+        englishTitle?: string | null;
         title?: string;
-        imdbId?: string;
-        trailerUrl?: string;
+        imdbId?: string | null;
+        trailerUrl?: string | null;
         seasons?: number;
         seriesStatus?: string;
       },
@@ -333,25 +334,27 @@ export const useCloudMovies = (roomId: string | null) => {
       if (!supabase) return NOT_SET_UP;
       const columns: {
         language?: string;
-        english_title?: string;
+        english_title?: string | null;
         title?: string;
-        imdb_id?: string;
-        trailer_url?: string;
+        imdb_id?: string | null;
+        trailer_url?: string | null;
         seasons?: number;
         series_status?: string;
       } = {};
       if (patch.language) columns.language = patch.language;
-      if (patch.englishTitle) columns.english_title = patch.englishTitle;
+      if (patch.englishTitle !== undefined) columns.english_title = patch.englishTitle;
       if (patch.title) columns.title = patch.title;
-      if (patch.imdbId) columns.imdb_id = patch.imdbId;
-      if (patch.trailerUrl) columns.trailer_url = patch.trailerUrl;
+      if (patch.imdbId !== undefined) columns.imdb_id = patch.imdbId;
+      if (patch.trailerUrl !== undefined) columns.trailer_url = patch.trailerUrl;
       if (patch.seasons) columns.seasons = patch.seasons;
       if (patch.seriesStatus) columns.series_status = patch.seriesStatus;
       if (!Object.keys(columns).length) return { ok: true };
       try {
         const { error: updateError } = await supabase.from("movies").update(columns).eq("id", movieId);
         if (updateError) return { ok: false, message: updateError.message };
-        setMovies((current) => current.map((movie) => (movie.id === movieId ? { ...movie, ...patch } : movie)));
+        // Only the fields given change; a cleared one (null) becomes "not set".
+        const shown = Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, value ?? undefined]));
+        setMovies((current) => current.map((movie) => (movie.id === movieId ? { ...movie, ...shown } : movie)));
         return { ok: true };
       } catch (caught) {
         return { ok: false, message: messageFrom(caught) };
