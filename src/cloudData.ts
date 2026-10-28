@@ -47,6 +47,8 @@ export const useCloudRoom = (userId: string | undefined) => {
   const [data, setData] = useState<CloudRoomData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Whose room has been looked up at least once (so "no room" is known for sure).
+  const [checkedFor, setCheckedFor] = useState<string | undefined>(undefined);
 
   const refresh = useCallback(async () => {
     if (!userId) {
@@ -63,6 +65,7 @@ export const useCloudRoom = (userId: string | undefined) => {
       setError(messageFrom(caught));
     } finally {
       setLoading(false);
+      setCheckedFor(userId);
     }
   }, [userId]);
 
@@ -72,7 +75,14 @@ export const useCloudRoom = (userId: string | undefined) => {
     return () => window.removeEventListener("focus", refresh);
   }, [refresh]);
 
-  return { room: data?.room ?? null, members: data?.members ?? [], loading, error, refresh };
+  return {
+    room: data?.room ?? null,
+    members: data?.members ?? [],
+    loading,
+    checked: Boolean(userId) && checkedFor === userId,
+    error,
+    refresh,
+  };
 };
 
 export const createRoom = async (roomName: string, memberName: string): Promise<ActionResult> => {
@@ -207,6 +217,8 @@ export const useCloudMovies = (roomId: string | null) => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Which room's watchlist has come back at least once (even with an error).
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const currentRoom = useRef<string | null>(roomId);
 
   const refresh = useCallback(async () => {
@@ -232,7 +244,10 @@ export const useCloudMovies = (roomId: string | null) => {
     } catch (caught) {
       if (currentRoom.current === roomId) setError(messageFrom(caught));
     } finally {
-      if (currentRoom.current === roomId) setLoading(false);
+      if (currentRoom.current === roomId) {
+        setLoading(false);
+        setLoadedFor(roomId);
+      }
     }
   }, [roomId]);
 
@@ -390,5 +405,5 @@ export const useCloudMovies = (roomId: string | null) => {
     [],
   );
 
-  return { movies, loading, error, refresh, add, remove, setStatus, updateInfo, saveRating };
+  return { movies, loading, loaded: Boolean(roomId) && loadedFor === roomId, error, refresh, add, remove, setStatus, updateInfo, saveRating };
 };

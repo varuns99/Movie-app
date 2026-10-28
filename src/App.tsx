@@ -47,6 +47,7 @@ import { isUpcomingCandidate, releaseLabel } from "./releaseDates";
 import { useInstallPrompt } from "./useInstallPrompt";
 import { useSwipeNavigation } from "./useSwipeNavigation";
 import { useRoulette } from "./useRoulette";
+import { postersInView, preloadImages } from "./preloadImages";
 import type { Member, MemberId, Mood, Movie, MovieCandidate, RouletteFilters, TasteProfile } from "./types";
 
 const moodLabels: Record<Mood, string> = {
@@ -60,6 +61,11 @@ const moodLabels: Record<Mood, string> = {
 };
 
 const todayIso = () => new Date().toISOString();
+
+// The splash screen stays up (at least its own minimum) until the first screen has
+// something to show, but never longer than this: on a slow connection the app
+// opens and carries on loading.
+const SPLASH_MAX_WAIT_MS = 8000;
 
 // v3: saved films are looked at once more so a trailer in the wrong language can be replaced.
 // v4: everything is looked at once more so series get repaired: before 0.1.39 the app
@@ -357,6 +363,16 @@ function App() {
   // The splash is skipped for people who ask their device to reduce motion.
   const [splashDone, setSplashDone] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const finishSplash = useCallback(() => setSplashDone(true), []);
+  const [splashTimedOut, setSplashTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSplashTimedOut(true), SPLASH_MAX_WAIT_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+  // The Discover list (signed out, or the Discover mode) and its posters are in.
+  const [discoverReady, setDiscoverReady] = useState(false);
+  const markDiscoverReady = useCallback(() => setDiscoverReady(true), []);
+  // The watchlist roulette's first posters (or the best pick's poster) are in.
+  const [postersReady, setPostersReady] = useState(false);
   const installApp = useInstallPrompt();
   const showSetup = Boolean(user) && !cloud.room;
   const myName = user ? (cloud.members.find((member) => member.userId === user.id)?.displayName ?? displayNameFor(user)) : "";
@@ -550,6 +566,24 @@ function App() {
     [movies, filters, profile, release],
   );
   const roulette = useRoulette(rouletteMovies);
+
+  // What the first screen needs before the splash screen goes away: signed out,
+  // Tonight's Discover list; signed in, the room and its watchlist, plus on Tonight
+  // either the Discover list or the roulette's first posters.
+  const firstScreenReady = (() => {
+    if (authLoading) return false;
+    if (!user) return activeView !== "tonight" || discoverReady;
+    if (!cloud.checked || (cloud.room && !cloudMovies.loaded)) return false;
+    if (activeView !== "tonight" || !cloud.room) return true;
+    return tonightMode === "discover" ? discoverReady : postersReady;
+  })();
+
+  const preloadStarted = useRef(false);
+  useEffect(() => {
+    if (splashDone || preloadStarted.current || !cloud.room || !cloudMovies.loaded) return;
+    preloadStarted.current = true;
+    preloadImages([bestTonight?.posterUrl, ...postersInView(rouletteMovies)]).then(() => setPostersReady(true));
+  }, [splashDone, cloud.room, cloudMovies.loaded, bestTonight, rouletteMovies]);
   const selectedMovie = roulette.selectedId ? movies.find((movie) => movie.id === roulette.selectedId) : undefined;
   const pick = usePickWindow(roulette.selectedId);
   const viewMovie = viewMovieId ? movies.find((movie) => movie.id === viewMovieId) : undefined;
@@ -736,6 +770,7 @@ function App() {
             <DiscoverView
               onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
               onTrailer={setTrailerMovie}
+              onReady={markDiscoverReady}
             />
           </div>
         )}
@@ -968,6 +1003,7 @@ function App() {
               saved={movies}
               onSave={(candidate) => cloudMovies.add(candidate, user.id)}
               onTrailer={setTrailerMovie}
+              onReady={markDiscoverReady}
             />
           </div>
         )}
@@ -1224,7 +1260,7 @@ function App() {
           onClose={() => setRoomOpen(false)}
         />
       )}
-      {!splashDone && <SplashScreen ready={!authLoading} onDone={finishSplash} />}
+      {!splashDone && <SplashScreen ready={firstScreenReady || splashTimedOut} onDone={finishSplash} />}
       {viewMovie && (
         <PickWindow
           heading={viewMovie.kind === "series" ? "Series details" : "Movie details"}

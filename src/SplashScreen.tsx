@@ -23,7 +23,8 @@ const mouthPath = (curve: number) => {
 };
 
 type Props = {
-  // True once the session check is done; the bar holds near the end until then.
+  // True once the first screen has what it needs (or the wait ran out); the bar
+  // holds near the end until then.
   ready: boolean;
   onDone: () => void;
 };

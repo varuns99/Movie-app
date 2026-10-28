@@ -18,6 +18,7 @@ import { LockedFeature } from "./LockedFeature";
 import { listSummary, yearSummary } from "./filterText";
 import { altTitle, identityKey, titleKey, titleMeta } from "./titles";
 import { PickWindow } from "./PickWindow";
+import { postersInView, preloadImages } from "./preloadImages";
 import { usePickWindow } from "./usePickWindow";
 import { RouletteStage } from "./RouletteStage";
 import { TrailerButton } from "./TrailerButton";
@@ -33,6 +34,9 @@ type Props = {
   // Signed in: the room's watchlist, so films already on it are left out, and how to add a pick to it.
   saved?: Movie[];
   onSave?: (movie: MovieCandidate) => Promise<ActionResult>;
+  // Called once, when the first list and the posters in view are in (or failed),
+  // so the splash screen can stay up until then.
+  onReady?: () => void;
 };
 
 type LoadState = "loading" | "ready" | "error";
@@ -40,7 +44,7 @@ type LoadState = "loading" | "ready" | "error";
 // Pick filters, spin, get a movie from the whole catalogue. Signed out this is the
 // Tonight screen; signed in it is "Discover": new films only, never ones already
 // on the watchlist, and a pick can be added to it.
-export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
+export function DiscoverView({ onSignIn, onTrailer, saved, onSave, onReady }: Props) {
   const signedIn = Boolean(onSave);
   const [filters, setFilters] = useState<DiscoverFilters>(defaultDiscoverFilters);
   const [movies, setMovies] = useState<MovieCandidate[]>([]);
@@ -75,10 +79,14 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
   const isSavedRef = useRef(isSaved);
   isSavedRef.current = isSaved;
 
+  // The first list loads at once; later filter changes wait a moment in case more follow.
+  const firstLoad = useRef(true);
   useEffect(() => {
     const controller = new AbortController();
     setLoadState("loading");
     setVerifying(false);
+    const delay = firstLoad.current ? 0 : 350;
+    firstLoad.current = false;
     const timeout = window.setTimeout(async () => {
       try {
         const result = await discoverMovies(filters, controller.signal, signedIn ? isSavedRef.current : undefined);
@@ -100,7 +108,7 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
         setMovies([]);
         setLoadState("error");
       }
-    }, 350);
+    }, delay);
     return () => {
       window.clearTimeout(timeout);
       controller.abort();
@@ -113,6 +121,13 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave }: Props) {
     [movies, signedIn, isSaved],
   );
   const roulette = useRoulette(items);
+
+  const reportedReady = useRef(false);
+  useEffect(() => {
+    if (reportedReady.current || !onReady || loadState === "loading") return;
+    reportedReady.current = true;
+    preloadImages(loadState === "ready" ? postersInView(items) : []).then(onReady);
+  }, [loadState, items, onReady]);
   const selected = items.find((item) => item.id === roulette.selectedId);
   const pick = usePickWindow(roulette.selectedId);
 
