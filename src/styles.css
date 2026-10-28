@@ -2256,18 +2256,16 @@ body {
   margin-top: 2rem;
 }
 
-/* Signed out: the page is greyed out behind the sign-in card. */
-.profile-card.greyed {
+/* Signed out, Watchlist and Profile are greyed out behind the sign-in card. */
+.greyed {
   opacity: 0.45;
   filter: grayscale(1);
   pointer-events: none;
   user-select: none;
 }
 
-/* Sits over the greyed buttons, leaving the greyed avatar and "Guest" in view. */
-.profile-signin {
+.signin-card {
   position: absolute;
-  bottom: -1rem;
   left: 50%;
   display: grid;
   gap: 0.5rem;
@@ -2282,18 +2280,23 @@ body {
   transform: translateX(-50%);
 }
 
-.profile-signin strong {
+/* Profile: over the greyed buttons, leaving the greyed avatar and "Guest" in view. */
+.profile-body .signin-card {
+  bottom: -1rem;
+}
+
+.signin-card strong {
   font-size: 1rem;
 }
 
-.profile-signin p {
+.signin-card p {
   margin: 0 0 0.25rem;
   color: var(--muted);
   font-size: 0.875rem;
   line-height: 1.45;
 }
 
-.profile-signin .primary-button {
+.signin-card .primary-button {
   padding: 0 1.5rem;
 }
 
@@ -2532,11 +2535,6 @@ body {
   min-width: 0;
 }
 
-.tab-dock .locked-wrap {
-  display: flex;
-  flex: 1;
-}
-
 .dock-tab {
   position: relative;
   display: grid;
@@ -2581,27 +2579,6 @@ body {
 
 .dock-slot.selected .dock-label {
   opacity: 1;
-}
-
-/* Signed out: a small lock beside the icon. */
-.dock-tab .lock-icon {
-  position: absolute;
-  top: 15px;
-  left: calc(50% + 7px);
-  width: 12px;
-  height: 12px;
-}
-
-/* The "sign in to open" card opens upwards from the bar. */
-.tab-dock .signin-popover {
-  top: auto;
-  bottom: calc(100% + 0.5rem);
-  margin-top: 0;
-}
-
-.tab-dock .signin-popover::before {
-  top: auto;
-  bottom: -0.5rem;
 }
 
 @media (prefers-color-scheme: light) {
@@ -2721,3 +2698,79 @@ body {
     line-clamp: 1;
   }
 }
+
+/* ---------- Watchlist while signed out: a greyed-out preview ---------- */
+
+.guest-page {
+  position: relative;
+}
+
+.guest-watchlist {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.guest-search {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 48px;
+  padding: 0 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.guest-search svg {
+  width: 18px;
+  height: 18px;
+}
+
+.guest-watchlist .section-heading {
+  margin-bottom: 0;
+}
+
+.guest-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem 1rem;
+}
+
+.guest-poster {
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-surface);
+  background: var(--surface-2);
+}
+
+.guest-line {
+  height: 0.8rem;
+  margin-top: 0.6rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.guest-line.short {
+  width: 55%;
+}
+
+/* One row of placeholders, so the page does not scroll. */
+.guest-card:nth-child(n + 3) {
+  display: none;
+}
+
+@media (min-width: 720px) {
+  .guest-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .guest-card:nth-child(n + 3) {
+    display: block;
+  }
+}
+
+/* Over the placeholder posters, near the top so it is in view on any phone. */
+.guest-page .signin-card {
+  top: 9rem;
+}
+

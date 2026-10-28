@@ -32,6 +32,7 @@ import { listSummary, yearSummary } from "./filterText";
 import { altTitle, cardMeta, isSameItem, lengthText, titleKey, titleMeta } from "./titles";
 import { normalizeTrailerUrl } from "./trailers";
 import { Avatar } from "./Avatar";
+import { GuestWatchlist } from "./GuestWatchlist";
 import { ProfilePage } from "./ProfilePage";
 import { HistoryIcon, ProfileIcon, TabDock, TonightIcon, WatchlistIcon } from "./TabDock";
 import { TrailerButton } from "./TrailerButton";
@@ -332,8 +333,6 @@ const dockIcons: Record<DockView, ReactNode> = {
   profile: <ProfileIcon />,
 };
 
-const lockedWatchlistBody =
-  "Save movies and series, rate them together, see your shared list on any device and keep a history of what you've watched.";
 
 const viewFromHash = (): View => {
   const hash = window.location.hash.replace("#", "");
@@ -389,9 +388,10 @@ function App() {
   const [filters, setFilters] = useState<RouletteFilters>(DEFAULT_ROULETTE_FILTERS);
   const [watchlistFilters, setWatchlistFilters] = useState<WatchlistFilters>(DEFAULT_WATCHLIST_FILTERS);
 
-  // Signed-out visitors only get Tonight and Profile. Wait for the session check
-  // first so a signed-in person opening #watchlist is not bounced to Tonight.
-  const activeView: View = user || authLoading || view === "profile" ? view : "tonight";
+  // Signed out, Watchlist and Profile open greyed-out previews; History is not
+  // reachable. Wait for the session check first so a signed-in person opening
+  // #history is not bounced to Tonight.
+  const activeView: View = user || authLoading || view !== "history" ? view : "tonight";
 
   // The section slides in from the side it is on (not for reduced motion, nor the first load).
   const mainRef = useRef<HTMLElement>(null);
@@ -696,7 +696,7 @@ function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          {hasSupabase && !user && activeView !== "profile" && (
+          {hasSupabase && !user && activeView === "tonight" && (
             <button className="signin-button" onClick={() => setAccountOpen(true)}>
               Sign in
             </button>
@@ -1180,6 +1180,10 @@ function App() {
           </section>
         )}
 
+        {!user && !authLoading && activeView === "watchlist" && (
+          <GuestWatchlist onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined} />
+        )}
+
         {activeView === "profile" && !authLoading && (
           <ProfilePage
             name={user ? myName : undefined}
@@ -1193,18 +1197,9 @@ function App() {
       </main>
 
       <TabDock
-        items={dockViews.map((item) => ({
-          id: item,
-          label: viewLabels[item],
-          icon: dockIcons[item],
-          locked:
-            item === "watchlist" && !user && !authLoading
-              ? { title: "Sign in to open Watchlist", body: lockedWatchlistBody }
-              : undefined,
-        }))}
+        items={dockViews.map((item) => ({ id: item, label: viewLabels[item], icon: dockIcons[item] }))}
         active={dockViewFor(activeView)}
         onSelect={(item) => setView(item as View)}
-        onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
       />
 
       {manualOpen && <ManualMovieModal onClose={() => setManualOpen(false)} onAdd={addMovie} />}

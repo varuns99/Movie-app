@@ -1,4 +1,5 @@
 import { Avatar } from "./Avatar";
+import { SignInCard } from "./SignInCard";
 
 // The Profile section: who is signed in, room settings and sign out, the
 // install button, and TheTVDB's credit. Signed out, the same page is greyed out
@@ -38,17 +39,7 @@ export function ProfilePage({
             </button>
           </div>
         </div>
-        {!signedIn && (
-          <div className="profile-signin">
-            <strong>Sign in to access all features</strong>
-            <p>Your shared watchlist, ratings and history, on any device.</p>
-            {onSignIn && (
-              <button type="button" className="primary-button" onClick={onSignIn}>
-                Sign in
-              </button>
-            )}
-          </div>
-        )}
+        {!signedIn && <SignInCard body="Your shared watchlist, ratings and history, on any device." onSignIn={onSignIn} />}
       </div>
 
       <footer className="profile-footer">

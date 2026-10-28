@@ -1,13 +1,10 @@
 import { useLayoutEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { LockedFeature } from "./LockedFeature";
 
 export type DockItem = {
   id: string;
   label: string;
   icon: ReactNode;
-  // Signed out: the tab stays visible but explains it needs an account.
-  locked?: { title: string; body: string };
 };
 
 // The bar's shape. The selected tab sits in a round "bead" that rises out of the
@@ -71,12 +68,10 @@ export function TabDock({
   items,
   active,
   onSelect,
-  onSignIn,
 }: {
   items: DockItem[];
   active: string;
   onSelect: (id: string) => void;
-  onSignIn?: () => void;
 }) {
   const dockRef = useRef<HTMLElement>(null);
   const pathRef = useRef<SVGPathElement>(null);
@@ -163,28 +158,17 @@ export function TabDock({
       </div>
       {items.map((item, index) => {
         const selected = index === activeIndex;
-        const content = (
-          <>
-            <span className="dock-icon">{item.icon}</span>
-            <span className="dock-label">{item.label}</span>
-          </>
-        );
         return (
           <div key={item.id} className={selected ? "dock-slot selected" : "dock-slot"}>
-            {item.locked ? (
-              <LockedFeature className="dock-tab" title={item.locked.title} body={item.locked.body} onSignIn={onSignIn}>
-                {content}
-              </LockedFeature>
-            ) : (
-              <button
-                type="button"
-                className="dock-tab"
-                aria-current={selected ? "page" : undefined}
-                onClick={() => onSelect(item.id)}
-              >
-                {content}
-              </button>
-            )}
+            <button
+              type="button"
+              className="dock-tab"
+              aria-current={selected ? "page" : undefined}
+              onClick={() => onSelect(item.id)}
+            >
+              <span className="dock-icon">{item.icon}</span>
+              <span className="dock-label">{item.label}</span>
+            </button>
           </div>
         );
       })}
