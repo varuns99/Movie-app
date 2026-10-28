@@ -683,6 +683,14 @@ input[type="range"] {
   min-width: 0;
   padding: 0.5rem;
   border-radius: var(--radius-control);
+  /* Tapping a result opens its preview. */
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .candidate:hover {
+    background: var(--surface-2);
+  }
 }
 
 .candidate:hover {
@@ -2436,18 +2444,6 @@ body {
   box-shadow: 0 0 8px color-mix(in srgb, var(--movie) 40%, transparent);
 }
 
-/* ---------- Discover: Movies / Series switch ---------- */
-
-.discover-kind {
-  margin: 0;
-}
-
-.discover-kind button {
-  min-height: 32px;
-  padding: 0 0.9rem;
-  font-size: 0.8rem;
-}
-
 .filter-note {
   margin: 0;
   color: var(--muted);
@@ -2692,11 +2688,6 @@ body {
   .roulette-panel .roulette-stage {
     margin-top: 0.75rem;
   }
-
-  .discover .filter-summary {
-    -webkit-line-clamp: 1;
-    line-clamp: 1;
-  }
 }
 
 /* ---------- Watchlist while signed out: a greyed-out preview ---------- */
@@ -2772,5 +2763,116 @@ body {
 /* Over the placeholder posters, near the top so it is in view on any phone. */
 .guest-page .signin-card {
   top: 9rem;
+}
+
+/* ---------- Tonight's top row: Recommendation / Spin and the search button ---------- */
+
+.tonight-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: 640px;
+}
+
+.tonight-pill {
+  flex: 1;
+  min-width: 0;
+}
+
+.tonight-pill .segmented {
+  max-width: none;
+}
+
+.search-toggle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-color: var(--line-strong);
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.search-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* The search bar covers the row, opening out of the round button on the right. */
+.tonight-search {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  animation: search-open 280ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.tonight-search .search-shell {
+  max-width: none;
+}
+
+@keyframes search-open {
+  from {
+    clip-path: inset(0 0 0 calc(100% - 48px) round 24px);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0 round 12px);
+  }
+}
+
+/* ---------- Inside Spin: Watchlist / Discover ---------- */
+
+.section-heading:has(.source-switch) {
+  align-items: center;
+}
+
+.source-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.source-switch button {
+  min-height: 32px;
+  padding: 0 0.95rem;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.source-switch button:hover:not(:disabled) {
+  color: var(--ink);
+  background: transparent;
+}
+
+.source-switch button.active,
+.source-switch button.active:hover:not(:disabled) {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+/* A line under the switch saying what it spins (wraps on narrow phones). */
+.source-hint {
+  margin: -0.35rem 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+/* Short phones: the button matches the smaller pill. */
+@media (max-width: 719px) and (max-height: 700px) {
+  .search-toggle {
+    width: 44px;
+    min-height: 44px;
+  }
 }
 

@@ -21,6 +21,7 @@ import { PickWindow } from "./PickWindow";
 import { postersInView, preloadImages } from "./preloadImages";
 import { usePickWindow } from "./usePickWindow";
 import { RouletteStage } from "./RouletteStage";
+import { SpinSourceSwitch, type SpinSource } from "./SpinSourceSwitch";
 import { TrailerButton } from "./TrailerButton";
 import { YearRange } from "./YearRange";
 import { useRoulette } from "./useRoulette";
@@ -37,6 +38,8 @@ type Props = {
   // Called once, when the first list and the posters in view are in (or failed),
   // so the splash screen can stay up until then.
   onReady?: () => void;
+  // Signed in: switches Spin to the watchlist (the heading becomes the Watchlist / Discover switch).
+  onSpinSource?: (source: SpinSource) => void;
 };
 
 type LoadState = "loading" | "ready" | "error";
@@ -44,7 +47,7 @@ type LoadState = "loading" | "ready" | "error";
 // Pick filters, spin, get a movie from the whole catalogue. Signed out this is the
 // Tonight screen; signed in it is "Discover": new films only, never ones already
 // on the watchlist, and a pick can be added to it.
-export function DiscoverView({ onSignIn, onTrailer, saved, onSave, onReady }: Props) {
+export function DiscoverView({ onSignIn, onTrailer, saved, onSave, onReady, onSpinSource }: Props) {
   const signedIn = Boolean(onSave);
   const [filters, setFilters] = useState<DiscoverFilters>(defaultDiscoverFilters);
   const [movies, setMovies] = useState<MovieCandidate[]>([]);
@@ -164,38 +167,37 @@ export function DiscoverView({ onSignIn, onTrailer, saved, onSave, onReady }: Pr
   return (
     <section className="panel roulette-panel discover">
       <div className="section-heading">
-        <h2>{signedIn ? "Discover something new" : "Find tonight's movie"}</h2>
+        {onSpinSource ? (
+          <SpinSourceSwitch value="discover" onChange={onSpinSource} disabled={roulette.spinning} />
+        ) : (
+          <h2>{signedIn ? "Discover something new" : "Find tonight's movie"}</h2>
+        )}
         <span>{loadState === "ready" ? `${items.length} to spin` : ""}</span>
       </div>
+      {onSpinSource && <p className="source-hint">Spin to find a movie or series beyond your watchlist.</p>}
 
       <FiltersSheet
-        leading={
-          signedIn && (
-            <div className="kind-tabs discover-kind" role="group" aria-label="Look for">
-              {(["movie", "series"] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={filters.kind === option}
-                  className={filters.kind === option ? "active" : ""}
-                  disabled={roulette.spinning}
-                  onClick={() => setFilters((current) => ({ ...current, kind: option }))}
-                >
-                  {option === "movie" ? "Movies" : "Series"}
-                </button>
-              ))}
-            </div>
-          )
-        }
         applied={filters}
         defaults={defaultDiscoverFilters}
-        resetTo={(draft) => ({ ...defaultDiscoverFilters, kind: draft.kind })}
         onApply={setFilters}
         summary={filterSummary}
         disabled={roulette.spinning}
       >
         {(draft, change, close) => (
           <div className="filters">
+            {/* Signed in, Discover can look for series too. */}
+            {signedIn && (
+              <label>
+                Type
+                <select
+                  value={draft.kind}
+                  onChange={(event) => change({ kind: event.target.value as DiscoverFilters["kind"] })}
+                >
+                  <option value="movie">Movies</option>
+                  <option value="series">Series</option>
+                </select>
+              </label>
+            )}
             <label>
               Language
               <select value={draft.language} onChange={(event) => change({ language: event.target.value })}>

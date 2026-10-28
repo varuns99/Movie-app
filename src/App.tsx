@@ -34,6 +34,8 @@ import { normalizeTrailerUrl } from "./trailers";
 import { Avatar } from "./Avatar";
 import { GuestWatchlist } from "./GuestWatchlist";
 import { ProfilePage } from "./ProfilePage";
+import { SearchPreview } from "./SearchPreview";
+import { SpinSourceSwitch, type SpinSource } from "./SpinSourceSwitch";
 import { HistoryIcon, ProfileIcon, TabDock, TonightIcon, WatchlistIcon } from "./TabDock";
 import { TrailerButton } from "./TrailerButton";
 import { PickWindow } from "./PickWindow";
@@ -82,22 +84,44 @@ const readCheckedLanguages = () => {
   }
 };
 
-type TonightMode = "recommendation" | "roulette" | "discover";
+// Tonight shows one of three views: the recommendation, or Spin from the watchlist
+// ("roulette") or from the whole catalogue ("discover"). The pill at the top picks
+// Recommendation or Spin; the switch inside Spin picks Watchlist or Discover.
+type TonightMode = "recommendation" | SpinSource;
+type TonightPage = "recommendation" | "spin";
 const TONIGHT_MODE_KEY = "two-seats:tonight-mode";
-const tonightModes: { value: TonightMode; label: string }[] = [
+const SPIN_SOURCE_KEY = "two-seats:spin-source";
+const tonightModeValues: TonightMode[] = ["recommendation", "roulette", "discover"];
+const tonightPages: { value: TonightPage; label: string }[] = [
   { value: "recommendation", label: "Recommendation" },
-  { value: "roulette", label: "Roulette" },
-  { value: "discover", label: "Discover" },
+  { value: "spin", label: "Spin" },
 ];
 
-// Remembers which of the three Tonight views the person last used on this device.
-const readTonightMode = (): TonightMode => {
+const readSaved = (key: string) => {
   try {
-    const saved = window.localStorage.getItem(TONIGHT_MODE_KEY);
-    return tonightModes.some((mode) => mode.value === saved) ? (saved as TonightMode) : "recommendation";
+    return window.localStorage.getItem(key);
   } catch {
-    return "recommendation";
+    return null;
   }
+};
+
+const saveChoice = (key: string, value: string) => {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Remembering the choice is a convenience only.
+  }
+};
+
+// Remembers which Tonight view, and which Spin source, the person last used on this device.
+const readTonightMode = (): TonightMode => {
+  const saved = readSaved(TONIGHT_MODE_KEY);
+  return tonightModeValues.includes(saved as TonightMode) ? (saved as TonightMode) : "recommendation";
+};
+
+const readSpinSource = (): SpinSource => {
+  const saved = readSaved(SPIN_SOURCE_KEY) ?? readSaved(TONIGHT_MODE_KEY);
+  return saved === "discover" ? "discover" : "roulette";
 };
 
 const writeCheckedLanguages = (ids: Set<string>) => {
@@ -389,16 +413,19 @@ function App() {
   const [trailerMovie, setTrailerMovie] = useState<{ title: string; trailerUrl?: string } | null>(null);
   const [ratingMovie, setRatingMovie] = useState<Movie | null>(null);
   const [viewMovieId, setViewMovieId] = useState<string | null>(null);
+  // A search result opened in a preview window.
+  const [previewCandidate, setPreviewCandidate] = useState<MovieCandidate | null>(null);
   const [tonightMode, setTonightModeState] = useState<TonightMode>(readTonightMode);
+  const [spinSource, setSpinSource] = useState<SpinSource>(readSpinSource);
   // Discover keeps its filters, list and pick while you look at the other modes and the
   // other sections (Watchlist, History), so it is built on first visit and then only hidden.
   const [discoverVisited, setDiscoverVisited] = useState(false);
   const setTonightMode = (mode: TonightMode) => {
     setTonightModeState(mode);
-    try {
-      window.localStorage.setItem(TONIGHT_MODE_KEY, mode);
-    } catch {
-      // Remembering the choice is a convenience only.
+    saveChoice(TONIGHT_MODE_KEY, mode);
+    if (mode !== "recommendation") {
+      setSpinSource(mode);
+      saveChoice(SPIN_SOURCE_KEY, mode);
     }
   };
   const [filters, setFilters] = useState<RouletteFilters>(DEFAULT_ROULETTE_FILTERS);
@@ -685,22 +712,24 @@ function App() {
     }
   };
 
-  const addMovie = (candidate: MovieCandidate) => {
+  // Resolves to true when the title was added.
+  const addMovie = (candidate: MovieCandidate): Promise<boolean> => {
     const exists = movies.some((movie) => isSameItem(movie, candidate));
     if (exists) {
       setSearchError("That one is already on your couch list.");
-      return;
+      return Promise.resolve(false);
     }
-    if (!user) return;
+    if (!user) return Promise.resolve(false);
 
     setActionError("");
     rememberRelease(candidate);
-    cloudMovies.add(candidate, user.id).then((result) => {
+    return cloudMovies.add(candidate, user.id).then((result) => {
       reportFailure(result);
       if (result.ok) {
         setQuery("");
         setSearchResults([]);
       }
+      return result.ok;
     });
   };
 
@@ -791,24 +820,22 @@ function App() {
         {cloudActive && cloudMovies.error && <p className="auth-message error">{cloudMovies.error}</p>}
         {user && !showSetup && activeView === "tonight" && (
           <>
-            <AddMovieBar
-              movies={movies}
-              query={query}
-              setQuery={setQuery}
-              searchLoading={searchLoading}
-              searchError={searchError}
-              searchResults={searchResults}
-              onManual={() => setManualOpen(true)}
-              onAdd={addMovie}
-              searchKind={searchKind}
-              onSearchKind={setSearchKind}
-            />
-
-            <SegmentedToggle
-              label="Tonight"
-              options={tonightModes}
-              value={tonightMode}
-              onChange={setTonightMode}
+            <TonightBar
+              page={tonightMode === "recommendation" ? "recommendation" : "spin"}
+              onPage={(page) => setTonightMode(page === "recommendation" ? "recommendation" : spinSource)}
+              search={{
+                movies,
+                onPreview: setPreviewCandidate,
+                query,
+                setQuery,
+                searchLoading,
+                searchError,
+                searchResults,
+                onManual: () => setManualOpen(true),
+                onAdd: addMovie,
+                searchKind,
+                onSearchKind: setSearchKind,
+              }}
             />
 
             {tonightMode === "recommendation" && (
@@ -857,9 +884,10 @@ function App() {
             {tonightMode === "roulette" && (
               <section className="panel roulette-panel">
                 <div className="section-heading">
-                  <h2>Let the room choose</h2>
+                  <SpinSourceSwitch value="roulette" onChange={setTonightMode} disabled={roulette.spinning} />
                   <span>{rouletteMovies.length} eligible</span>
                 </div>
+                <p className="source-hint">Spin to pick a movie or series from your watchlist.</p>
 
                 <FiltersSheet
                   applied={filters}
@@ -1004,6 +1032,7 @@ function App() {
               onSave={(candidate) => cloudMovies.add(candidate, user.id)}
               onTrailer={setTrailerMovie}
               onReady={markDiscoverReady}
+              onSpinSource={setTonightMode}
             />
           </div>
         )}
@@ -1012,6 +1041,7 @@ function App() {
           <>
             <AddMovieBar
               movies={movies}
+              onPreview={setPreviewCandidate}
               query={query}
               setQuery={setQuery}
               searchLoading={searchLoading}
@@ -1261,6 +1291,16 @@ function App() {
         />
       )}
       {!splashDone && <SplashScreen ready={firstScreenReady || splashTimedOut} onDone={finishSplash} />}
+      {previewCandidate && (
+        <SearchPreview
+          candidate={previewCandidate}
+          added={movies.some((movie) => isSameItem(movie, previewCandidate))}
+          onAdd={addMovie}
+          onTrailer={setTrailerMovie}
+          onClose={() => setPreviewCandidate(null)}
+          flyFrom={`.candidate[data-key="${CSS.escape(candidateKey(previewCandidate))}"] img`}
+        />
+      )}
       {viewMovie && (
         <PickWindow
           heading={viewMovie.kind === "series" ? "Series details" : "Movie details"}
@@ -1329,6 +1369,8 @@ function App() {
 
 type AddMovieBarProps = {
   movies: Movie[];
+  // Opens a search result in a preview window.
+  onPreview: (candidate: MovieCandidate) => void;
   query: string;
   setQuery: (value: string) => void;
   searchLoading: boolean;
@@ -1338,6 +1380,10 @@ type AddMovieBarProps = {
   onAdd: (candidate: MovieCandidate) => void;
   searchKind: SearchKind;
   onSearchKind: (kind: SearchKind) => void;
+  // Tonight's search opens from a button: focus it at once, and close it again when
+  // it is left empty (or with × / Escape).
+  autoFocus?: boolean;
+  onDismiss?: () => void;
 };
 
 const searchKinds: { value: SearchKind; label: string }[] = [
@@ -1346,8 +1392,57 @@ const searchKinds: { value: SearchKind; label: string }[] = [
   { value: "series", label: "Series" },
 ];
 
+// Tonight's top row: the Recommendation / Spin pill and a round search button. The
+// button opens into the full search bar, which grows out of it across the row.
+function TonightBar({
+  page,
+  onPage,
+  search,
+}: {
+  page: TonightPage;
+  onPage: (page: TonightPage) => void;
+  search: AddMovieBarProps;
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => {
+    search.setQuery("");
+    setOpen(false);
+  };
+  // After adding a title the search text is cleared; if nobody is typing, fold it away.
+  const previousQuery = useRef(search.query);
+  useEffect(() => {
+    const wasTyped = Boolean(previousQuery.current);
+    previousQuery.current = search.query;
+    if (open && wasTyped && !search.query && document.activeElement?.tagName !== "INPUT") setOpen(false);
+  }, [open, search.query]);
+
+  return (
+    <div className="tonight-bar">
+      <div className="tonight-pill" inert={open}>
+        <SegmentedToggle label="Tonight" options={tonightPages} value={page} onChange={onPage} />
+      </div>
+      {open ? (
+        <div className="tonight-search">
+          <AddMovieBar {...search} autoFocus onDismiss={close} />
+        </div>
+      ) : (
+        <button type="button" className="search-toggle" aria-label="Search a movie or series to add" onClick={() => setOpen(true)}>
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.8" />
+            <line x1="13.6" y1="13.6" x2="17.5" y2="17.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// A stable key for a search result (also marks its poster for the preview's flight).
+const candidateKey = (movie: MovieCandidate) => `${movie.kind ?? "movie"}-${movie.source}-${movie.tvdbId ?? movie.title}`;
+
 function AddMovieBar({
   movies,
+  onPreview,
   query,
   setQuery,
   searchLoading,
@@ -1357,7 +1452,10 @@ function AddMovieBar({
   onAdd,
   searchKind,
   onSearchKind,
+  autoFocus,
+  onDismiss,
 }: AddMovieBarProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
   return (
     <section className="search-shell" aria-label="Add a movie or series">
       <div className="search-field">
@@ -1365,9 +1463,33 @@ function AddMovieBar({
           <circle cx="9" cy="9" r="6.25" stroke="currentColor" strokeWidth="1.6" />
           <line x1="13.6" y1="13.6" x2="17.5" y2="17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a movie or series to add" />
-        {query && (
-          <button type="button" className="clear-search" aria-label="Clear search" onClick={() => setQuery("")}>
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search a movie or series to add"
+          autoFocus={autoFocus}
+          onBlur={() => {
+            if (!query) onDismiss?.();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") onDismiss?.();
+          }}
+        />
+        {(query || onDismiss) && (
+          <button
+            type="button"
+            className="clear-search"
+            aria-label={query ? "Clear search" : "Close search"}
+            onClick={() => {
+              if (!query) {
+                onDismiss?.();
+                return;
+              }
+              setQuery("");
+              inputRef.current?.focus();
+            }}
+          >
             ×
           </button>
         )}
@@ -1404,7 +1526,15 @@ function AddMovieBar({
             {searchResults.map((movie) => {
               const alreadyAdded = movies.some((item) => isSameItem(item, movie));
               return (
-                <article key={`${movie.kind ?? "movie"}-${movie.source}-${movie.tvdbId ?? movie.title}`} className="candidate">
+                // Tapping the result (anywhere but Add) opens its preview. Keyboard users have Add.
+                <article
+                  key={candidateKey(movie)}
+                  data-key={candidateKey(movie)}
+                  className="candidate"
+                  onClick={(event) => {
+                    if (!(event.target as HTMLElement).closest("button, a")) onPreview(movie);
+                  }}
+                >
                   <img src={movie.posterUrl} alt="" />
                   <div>
                     <h3>{movie.title}</h3>
