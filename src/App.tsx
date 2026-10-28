@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { demoCandidates, moods } from "./demoData";
 import { getCachedMovieSuggestions, hasMovieProxy, searchMovies, type SearchKind } from "./movieSearch";
 import {
@@ -31,8 +31,9 @@ import { FiltersSheet } from "./FiltersSheet";
 import { listSummary, yearSummary } from "./filterText";
 import { altTitle, cardMeta, isSameItem, lengthText, titleKey, titleMeta } from "./titles";
 import { normalizeTrailerUrl } from "./trailers";
-import { LockedFeature } from "./LockedFeature";
-import { ProfileMenu } from "./ProfileMenu";
+import { Avatar } from "./Avatar";
+import { ProfilePage } from "./ProfilePage";
+import { HistoryIcon, ProfileIcon, TabDock, TonightIcon, WatchlistIcon } from "./TabDock";
 import { TrailerButton } from "./TrailerButton";
 import { PickWindow } from "./PickWindow";
 import { usePickWindow } from "./usePickWindow";
@@ -307,15 +308,28 @@ const DEFAULT_WATCHLIST_FILTERS: WatchlistFilters = {
   sort: "added-desc",
 };
 
-type View = "tonight" | "watchlist" | "history";
-const views: View[] = ["tonight", "watchlist", "history"];
-const viewLabels: Record<View, string> = { tonight: "Tonight", watchlist: "Watchlist", history: "History" };
-
-const lockedViewBodies: Record<View, string> = {
-  tonight: "",
-  watchlist: "Save movies and series, rate them together and see your shared list on any device.",
-  history: "Keep a record of what you've watched and how you both rated it.",
+type View = "tonight" | "watchlist" | "history" | "profile";
+// In page order: a section slides in from the side it is on. History is a page
+// inside Watchlist (opened from the clock at the top right).
+const views: View[] = ["tonight", "watchlist", "history", "profile"];
+// The sections in the bottom bar.
+type DockView = "tonight" | "watchlist" | "profile";
+const dockViews: DockView[] = ["tonight", "watchlist", "profile"];
+const dockViewFor = (view: View): DockView => (view === "history" ? "watchlist" : view);
+const viewLabels: Record<View, string> = {
+  tonight: "Tonight",
+  watchlist: "Watchlist",
+  history: "History",
+  profile: "Profile",
 };
+const dockIcons: Record<DockView, ReactNode> = {
+  tonight: <TonightIcon />,
+  watchlist: <WatchlistIcon />,
+  profile: <ProfileIcon />,
+};
+
+const lockedWatchlistBody =
+  "Save movies and series, rate them together, see your shared list on any device and keep a history of what you've watched.";
 
 const viewFromHash = (): View => {
   const hash = window.location.hash.replace("#", "");
@@ -342,6 +356,7 @@ function App() {
   const finishSplash = useCallback(() => setSplashDone(true), []);
   const installApp = useInstallPrompt();
   const showSetup = Boolean(user) && !cloud.room;
+  const myName = user ? (cloud.members.find((member) => member.userId === user.id)?.displayName ?? displayNameFor(user)) : "";
   const movies = cloudMovies.movies;
   const release = useReleaseStatus(movies, cloudActive);
   const members = useMemo<Member[]>(
@@ -370,9 +385,9 @@ function App() {
   const [filters, setFilters] = useState<RouletteFilters>(DEFAULT_ROULETTE_FILTERS);
   const [watchlistFilters, setWatchlistFilters] = useState<WatchlistFilters>(DEFAULT_WATCHLIST_FILTERS);
 
-  // Signed-out visitors only get Tonight. Wait for the session check first so a
-  // signed-in person opening #watchlist is not bounced to Tonight.
-  const activeView: View = user || authLoading ? view : "tonight";
+  // Signed-out visitors only get Tonight and Profile. Wait for the session check
+  // first so a signed-in person opening #watchlist is not bounced to Tonight.
+  const activeView: View = user || authLoading || view === "profile" ? view : "tonight";
 
   // The section slides in from the side it is on (not for reduced motion, nor the first load).
   const mainRef = useRef<HTMLElement>(null);
@@ -397,10 +412,10 @@ function App() {
     if (user && activeView === "tonight" && tonightMode === "discover") setDiscoverVisited(true);
   }, [user, activeView, tonightMode]);
 
-  // Swiping sideways moves between Tonight, Watchlist and History (only when signed in).
+  // Swiping sideways moves between the sections in the bottom bar (only when signed in).
   const swipe = useSwipeNavigation((direction) => {
     if (!user) return;
-    const next = views[views.indexOf(activeView) + direction];
+    const next = dockViews[dockViews.indexOf(dockViewFor(activeView)) + direction];
     if (next) setView(next);
   });
 
@@ -669,54 +684,50 @@ function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          {hasSupabase && !user && (
+          {hasSupabase && !user && activeView !== "profile" && (
             <button className="signin-button" onClick={() => setAccountOpen(true)}>
               Sign in
             </button>
           )}
-          {user && (
-            <ProfileMenu
-              name={cloud.members.find((member) => member.userId === user.id)?.displayName ?? displayNameFor(user)}
-              email={user.email ?? ""}
-              onRoomSettings={() => setRoomOpen(true)}
-              onSignOut={() => void signOut()}
-            />
+          {user && activeView === "tonight" && (
+            <button type="button" className="profile-button" onClick={() => setView("profile")}>
+              <span className="profile-name">{myName}</span>
+              <Avatar size={32} />
+            </button>
+          )}
+          {user && (activeView === "watchlist" || activeView === "history") && (
+            <button
+              type="button"
+              className={activeView === "history" ? "history-button active" : "history-button"}
+              aria-label={activeView === "history" ? "Back to the watchlist" : "History"}
+              aria-pressed={activeView === "history"}
+              onClick={() => setView(activeView === "history" ? "watchlist" : "history")}
+            >
+              <HistoryIcon />
+            </button>
           )}
         </div>
       </header>
 
-      <nav className="view-tabs" aria-label="Sections">
-        {views.map((item) =>
-          user || authLoading || item === "tonight" ? (
-            <button key={item} className={activeView === item ? "active" : ""} onClick={() => setView(item)}>
-              {viewLabels[item]}
-            </button>
-          ) : (
-            <LockedFeature
-              key={item}
-              title={`Sign in to open ${viewLabels[item]}`}
-              body={lockedViewBodies[item]}
-              onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
-            >
-              {viewLabels[item]}
-            </LockedFeature>
-          ),
-        )}
-      </nav>
-
-      <main ref={mainRef} className="view" aria-label={`${viewLabels[activeView]} view`}>
+      <main
+        ref={mainRef}
+        className={activeView === "profile" ? "view profile-view" : "view"}
+        aria-label={`${viewLabels[activeView]} view`}
+      >
         {actionError && (
           <p className="auth-message error" role="alert">
             {actionError}
           </p>
         )}
         {!user && !authLoading && (
-          <DiscoverView
-            onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
-            onTrailer={setTrailerMovie}
-          />
+          <div hidden={activeView !== "tonight"}>
+            <DiscoverView
+              onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
+              onTrailer={setTrailerMovie}
+            />
+          </div>
         )}
-        {showSetup && (
+        {showSetup && activeView !== "profile" && (
           <section className="panel setup-panel">
             <h2>{cloud.loading ? "Loading your room..." : "Set up your room"}</h2>
             {!cloud.loading && (
@@ -1152,22 +1163,33 @@ function App() {
             )}
           </section>
         )}
-      </main>
-      <footer className="site-footer">
-        <p>
-          Movie data from{" "}
-          <a href="https://thetvdb.com" target="_blank" rel="noreferrer">
-            TheTVDB.com
-          </a>
-          . This product is not endorsed or certified by TheTVDB.
-        </p>
-        {installApp.canInstall && (
-          <button type="button" onClick={installApp.install}>
-            Install app
-          </button>
+
+        {activeView === "profile" && !authLoading && (
+          <ProfilePage
+            name={user ? myName : undefined}
+            email={user?.email ?? ""}
+            onRoomSettings={() => setRoomOpen(true)}
+            onSignOut={() => void signOut()}
+            onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
+            install={installApp}
+          />
         )}
-        {!installApp.canInstall && installApp.iosHint && <p>To install: tap Share, then Add to Home Screen.</p>}
-      </footer>
+      </main>
+
+      <TabDock
+        items={dockViews.map((item) => ({
+          id: item,
+          label: viewLabels[item],
+          icon: dockIcons[item],
+          locked:
+            item === "watchlist" && !user && !authLoading
+              ? { title: "Sign in to open Watchlist", body: lockedWatchlistBody }
+              : undefined,
+        }))}
+        active={dockViewFor(activeView)}
+        onSelect={(item) => setView(item as View)}
+        onSignIn={hasSupabase ? () => setAccountOpen(true) : undefined}
+      />
 
       {manualOpen && <ManualMovieModal onClose={() => setManualOpen(false)} onAdd={addMovie} />}
       {accountOpen && (

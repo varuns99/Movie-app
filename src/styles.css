@@ -219,6 +219,8 @@ h3 {
   display: flex;
   flex: 0 0 auto;
   gap: 0.25rem;
+  /* Keeps the header the same height on Profile, where it has no button. */
+  min-height: 44px;
 }
 
 .account-email {
@@ -243,35 +245,6 @@ h3 {
 .auth-message.error {
   background: var(--danger-soft);
   color: var(--danger);
-}
-
-/* Tabs: quiet underline, natural width. */
-.view-tabs {
-  display: flex;
-  gap: 0.25rem;
-  margin-bottom: 1.25rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.view-tabs > button {
-  min-height: 44px;
-  margin-bottom: -1px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: 0 0.9rem;
-  color: var(--muted);
-  font-size: 0.95rem;
-}
-
-.view-tabs > button:hover:not(:disabled) {
-  background: transparent;
-  color: var(--ink);
-}
-
-.view-tabs > button.active {
-  border-bottom-color: var(--accent);
-  color: var(--ink);
 }
 
 .view {
@@ -1389,21 +1362,6 @@ input[type="range"] {
   height: 14px;
 }
 
-.view-tabs .locked-control {
-  min-height: 44px;
-  margin-bottom: -1px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: 0 0.9rem;
-  font-size: 0.95rem;
-}
-
-.view-tabs .locked-control:hover:not(:disabled) {
-  background: transparent;
-  color: var(--ink);
-}
-
 .signin-popover {
   position: absolute;
   top: 100%;
@@ -1946,40 +1904,14 @@ body {
   outline-offset: -5px;
 }
 
-/* ---------- Footer: attribution and install hint, pinned to the bottom of the screen ---------- */
+/* ---------- Page height: room for the tab bar pinned to the bottom of the screen ---------- */
 
 .app-shell {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
-  padding-bottom: 0;
-}
-
-.site-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
-  display: grid;
-  gap: 0.25rem;
-  justify-items: center;
-  margin-top: auto;
-  padding: 0.5rem 0 calc(0.5rem + env(safe-area-inset-bottom, 0px));
-  color: var(--muted);
-  font-size: 0.7rem;
-  line-height: 1.35;
-  text-align: center;
-  border-top: 1px solid var(--line);
-  background: var(--bg);
-}
-
-.site-footer p {
-  margin: 0;
-}
-
-.site-footer button {
-  min-height: 30px;
-  padding: 0 1rem;
-  font-size: 0.78rem;
+  /* The bar (64px), its gap to the screen edge, and the bead rising 28px above it. */
+  padding-bottom: calc(64px + 28px + 2rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* ---------- Films that are not out yet ---------- */
@@ -2195,11 +2127,7 @@ body {
   flex: none;
 }
 
-/* ---------- Profile: name and avatar, with a small menu ---------- */
-
-.profile {
-  position: relative;
-}
+/* ---------- Top right: name and avatar (opens Profile), or the History button ---------- */
 
 .profile-button {
   display: inline-flex;
@@ -2213,8 +2141,7 @@ body {
   color: var(--ink);
 }
 
-.profile-button:hover:not(:disabled),
-.profile-button[aria-expanded="true"] {
+.profile-button:hover:not(:disabled) {
   border-color: var(--line-strong);
   background: var(--surface);
 }
@@ -2233,68 +2160,154 @@ body {
   display: block;
 }
 
-.profile-menu {
-  position: absolute;
-  top: calc(100% + 0.4rem);
-  right: 0;
-  z-index: 8;
+.history-button {
   display: grid;
-  min-width: min(15rem, 80vw);
-  padding: 0.35rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
-  animation: modal-backdrop-in 140ms ease both;
+  place-items: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-color: var(--line);
+  border-radius: 50%;
+  color: var(--muted);
 }
 
-.profile-email {
-  margin: 0;
-  padding: 0.55rem 0.7rem 0.6rem;
+.history-button:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.history-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* On the History page the button is lit; pressing it goes back to the watchlist. */
+.history-button.active,
+.history-button.active:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ---------- Profile page ---------- */
+
+/* Profile fills the screen down to the tab bar, so TheTVDB's credit sits at the bottom. */
+.profile-view {
+  flex: 1 0 auto;
+  grid-template-rows: 1fr;
+}
+
+.profile-page {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.profile-body {
+  position: relative;
+  padding-top: clamp(1.5rem, 9dvh, 5rem);
+}
+
+.profile-card {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+.profile-card .avatar {
+  margin-bottom: 1rem;
+}
+
+.profile-page-name {
+  max-width: 100%;
   overflow: hidden;
-  border-bottom: 1px solid var(--line);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-page-email {
+  max-width: 100%;
+  margin: 0.3rem 0 0;
+  overflow: hidden;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: text;
 }
 
-.profile-menu button {
-  justify-content: flex-start;
-  width: 100%;
-  min-height: 44px;
-  padding: 0 0.7rem;
-  border: 0;
-  border-radius: 10px;
-  text-align: left;
+.profile-actions {
+  display: grid;
+  gap: 0.6rem;
+  width: min(100%, 20rem);
+  margin-top: 2rem;
 }
 
-.profile-menu button:hover {
-  background: var(--surface-2);
+/* Signed out: the page is greyed out behind the sign-in card. */
+.profile-card.greyed {
+  opacity: 0.45;
+  filter: grayscale(1);
+  pointer-events: none;
+  user-select: none;
 }
 
-/* ---------- Phones: the three tabs share the full width equally ---------- */
+/* Sits over the greyed buttons, leaving the greyed avatar and "Guest" in view. */
+.profile-signin {
+  position: absolute;
+  bottom: -1rem;
+  left: 50%;
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  width: min(100%, 20rem);
+  padding: 1.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-surface);
+  text-align: center;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  transform: translateX(-50%);
+}
 
-@media (max-width: 719px) {
-  .view-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0;
-  }
+.profile-signin strong {
+  font-size: 1rem;
+}
 
-  .view-tabs > button,
-  .view-tabs .locked-wrap,
-  .view-tabs .locked-control {
-    width: 100%;
-  }
+.profile-signin p {
+  margin: 0 0 0.25rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
 
-  .view-tabs > button,
-  .view-tabs .locked-control {
-    justify-content: center;
-    padding: 0 0.25rem;
-    text-align: center;
-  }
+.profile-signin .primary-button {
+  padding: 0 1.5rem;
+}
+
+.profile-footer {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: center;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.profile-footer p {
+  margin: 0;
+}
+
+.profile-footer button {
+  min-height: 36px;
+  padding: 0 1rem;
+  font-size: 0.85rem;
 }
 
 /* ---------- Trailer window on a phone turned sideways ---------- */
@@ -2433,4 +2446,160 @@ body {
   overflow: visible;
   text-overflow: clip;
   white-space: normal;
+}
+
+/* ---------- Tab bar: the sections, pinned to the bottom of the screen ---------- */
+
+/* The selected tab rises into a green bead and the bar's top edge curves down
+   around it. The outline is drawn (and moved) by TabDock.tsx; 64px high, bead
+   50px wide with its centre 3px above the bar. */
+.tab-dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(420px, calc(100% - 2rem));
+  height: 64px;
+  padding: 0 0.75rem;
+  transform: translateX(-50%);
+}
+
+.dock-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.35));
+}
+
+.dock-shape path {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.dock-bead {
+  position: absolute;
+  top: -28px;
+  left: 0;
+  z-index: 1;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  color: var(--on-accent);
+  background: var(--accent);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+.dock-bead-icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.dock-bead-icon.shown {
+  opacity: 1;
+}
+
+.dock-bead-icon svg,
+.dock-icon svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.dock-slot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.tab-dock .locked-wrap {
+  display: flex;
+  flex: 1;
+}
+
+.dock-tab {
+  position: relative;
+  display: grid;
+  flex: 1;
+  place-items: center;
+  width: 100%;
+  min-height: 64px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-surface);
+  color: var(--muted);
+  background: transparent;
+}
+
+.dock-tab:hover:not(:disabled) {
+  color: var(--ink);
+  background: transparent;
+}
+
+.dock-icon {
+  transition: opacity 160ms ease;
+}
+
+/* The bead shows the selected tab's icon; its own spot keeps only the name. */
+.dock-slot.selected .dock-icon {
+  opacity: 0;
+}
+
+.dock-label {
+  position: absolute;
+  right: 0;
+  bottom: 7px;
+  left: 0;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+.dock-slot.selected .dock-label {
+  opacity: 1;
+}
+
+/* Signed out: a small lock beside the icon. */
+.dock-tab .lock-icon {
+  position: absolute;
+  top: 15px;
+  left: calc(50% + 7px);
+  width: 12px;
+  height: 12px;
+}
+
+/* The "sign in to open" card opens upwards from the bar. */
+.tab-dock .signin-popover {
+  top: auto;
+  bottom: calc(100% + 0.5rem);
+  margin-top: 0;
+}
+
+.tab-dock .signin-popover::before {
+  top: auto;
+  bottom: -0.5rem;
+}
+
+@media (prefers-color-scheme: light) {
+  .dock-shape {
+    filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.12));
+  }
+
+  .dock-bead {
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+  }
 }

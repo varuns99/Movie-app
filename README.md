@@ -68,7 +68,7 @@ Restart the dev server after adding the proxy URL.
 
 ## TVDB Attribution
 
-When TVDB search is connected, the app displays a required attribution link to TheTVDB.com in the footer, and notes that the product is not endorsed or certified by TheTVDB.
+When TVDB search is connected, the app displays a required attribution link to TheTVDB.com at the bottom of the Profile page, and notes that the product is not endorsed or certified by TheTVDB.
 
 ## Movies and Series
 
