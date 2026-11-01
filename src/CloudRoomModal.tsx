@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Modal } from "./Modal";
 import { DEFAULT_ROOM_NAME, createRoom, joinRoom, leaveRoom, renameMember, renameRoom } from "./cloudData";
+import type { CloudRoomData } from "./cloudData";
 import type { CloudMember, CloudRoom } from "./types";
 
 type CloudRoomModalProps = {
@@ -11,7 +12,7 @@ type CloudRoomModalProps = {
   members: CloudMember[];
   loading: boolean;
   error: string;
-  refresh: () => Promise<void>;
+  refresh: () => Promise<CloudRoomData | null>;
   onClose: () => void;
 };
 
@@ -29,6 +30,11 @@ export function CloudRoomModal({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [copied, setCopied] = useState(false);
+  // The messages sit at the top of a window that scrolls on phones, so bring them into view.
+  const messages = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (error || notice) messages.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [error, notice]);
 
   const run = async (label: string, action: () => Promise<{ ok: true } | { ok: false; message: string }>, done = "") => {
     setBusy(label);
@@ -36,7 +42,11 @@ export function CloudRoomModal({
     setNotice("");
     const result = await action();
     if (result.ok) {
-      await refresh();
+      const found = await refresh();
+      // Creating or joining worked but the room didn't come back: say so, rather than silently showing the forms again.
+      if (!found && (label === "create" || label === "join")) {
+        setError("That went through, but the room didn't load. Close this window and open Room settings again.");
+      }
       setNotice(done);
     } else {
       setError(result.message);
@@ -81,9 +91,11 @@ export function CloudRoomModal({
     return (
       <Modal title="Set up your room" onClose={onClose}>
         <div className="modal-form">
-          {loadError && <p className="auth-message error">{loadError}</p>}
-          {error && <p className="auth-message error">{error}</p>}
-          {notice && <p className="auth-message">{notice}</p>}
+          <div ref={messages} className="room-messages">
+            {loadError && <p className="auth-message error">{loadError}</p>}
+            {error && <p className="auth-message error">{error}</p>}
+            {notice && <p className="auth-message">{notice}</p>}
+          </div>
 
           <form className="room-section" onSubmit={onCreate}>
             <h3>Create a room</h3>
@@ -135,9 +147,11 @@ export function CloudRoomModal({
   return (
     <Modal title="Your room" onClose={onClose}>
       <div className="modal-form">
-        {loadError && <p className="auth-message error">{loadError}</p>}
-        {error && <p className="auth-message error">{error}</p>}
-        {notice && <p className="auth-message">{notice}</p>}
+        <div ref={messages} className="room-messages">
+          {loadError && <p className="auth-message error">{loadError}</p>}
+          {error && <p className="auth-message error">{error}</p>}
+          {notice && <p className="auth-message">{notice}</p>}
+        </div>
 
         <form
           className="room-section"

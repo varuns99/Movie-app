@@ -50,19 +50,22 @@ export const useCloudRoom = (userId: string | undefined) => {
   // Whose room has been looked up at least once (so "no room" is known for sure).
   const [checkedFor, setCheckedFor] = useState<string | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<CloudRoomData | null> => {
     if (!userId) {
       setData(null);
       setError("");
-      return;
+      return null;
     }
 
     setLoading(true);
     try {
-      setData(await fetchMyRoom(userId));
+      const fetched = await fetchMyRoom(userId);
+      setData(fetched);
       setError("");
+      return fetched;
     } catch (caught) {
       setError(messageFrom(caught));
+      return null;
     } finally {
       setLoading(false);
       setCheckedFor(userId);

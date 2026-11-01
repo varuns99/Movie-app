@@ -1198,6 +1198,15 @@ input[type="range"] {
   border: 0;
 }
 
+.room-messages {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.room-messages:empty {
+  display: none;
+}
+
 .room-section {
   display: grid;
   gap: 0.75rem;
