@@ -56,6 +56,7 @@ export function ProfilePage({
           </a>
           . This product is not endorsed or certified by TheTVDB.
         </p>
+        <p className="app-version">Version {__APP_VERSION__}</p>
       </footer>
     </section>
   );

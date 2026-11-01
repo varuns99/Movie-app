@@ -2334,6 +2334,10 @@ body {
   margin: 0;
 }
 
+.profile-footer .app-version {
+  color: var(--faint);
+}
+
 .profile-footer button {
   min-height: 36px;
   padding: 0 1rem;
